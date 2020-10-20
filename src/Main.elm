@@ -9,6 +9,7 @@ import Css exposing (..)
 import Html exposing (Html)
 import Html.Styled as Styled
 import Html.Styled.Attributes exposing (css)
+import Html.Styled.Events as StyledEvents
 import Json.Decode as Decode exposing (Decoder)
 import Length
 import Pixels
@@ -37,6 +38,7 @@ type alias Model =
     , plane : SketchPlane3d Length.Meters World { defines : TopLeftCoordinates }
     , viewPlane : SketchPlane3d Length.Meters World { defines : TopLeftCoordinates }
     , mouse : MouseState
+    , lockY : Bool
     }
 
 
@@ -54,6 +56,8 @@ type Msg
     = MouseDown Float Float
     | MouseUp Float Float
     | MouseMove Float Float
+    | ToggleLockY
+    | NoOp
 
 
 init : () -> ( Model, Cmd msg )
@@ -71,6 +75,7 @@ init () =
             |> SketchPlane3d.offsetBy (Length.meters -3)
             |> SketchPlane3d.rotateAround tiltAxis (Angle.degrees 15)
     , mouse = Up
+    , lockY = False
     }
         |> withNoCmd
 
@@ -95,6 +100,13 @@ mouseDecoder mapper =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        NoOp ->
+            model |> withNoCmd
+
+        ToggleLockY ->
+            { model | lockY = not model.lockY }
+                |> withNoCmd
+
         MouseDown x y ->
             { model
                 | mouse =
@@ -127,7 +139,12 @@ update msg model =
                                 |> SketchPlane3d.rotateAround turnAxis offsetAngleX
                         , viewPlane =
                             model.viewPlane
-                                |> SketchPlane3d.rotateAround tiltAxis offsetAngleY
+                                |> (if model.lockY then
+                                        identity
+
+                                    else
+                                        SketchPlane3d.rotateAround tiltAxis offsetAngleY
+                                   )
                     }
                         |> withNoCmd
 
@@ -172,17 +189,35 @@ plotPointAt x y plane viewPlane =
         |> Maybe.map (Point3d.projectInto plane)
 
 
-view : Model -> List (Html msg)
-view { points, plane, viewPlane } =
-    points
-        |> List.map
-            (Point3d.on plane
-                >> Point3d.projectInto viewPlane
-                >> viewPoint
-            )
+view : Model -> List (Html Msg)
+view { points, plane, viewPlane, lockY } =
+    List.map Styled.toUnstyled <|
+        Styled.button
+            [ StyledEvents.onClick ToggleLockY
+            , StyledEvents.stopPropagationOn "mouseup" <| Decode.succeed ( NoOp, True )
+            , StyledEvents.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
+            , css
+                [ padding <| px 4
+                , margin <| px 10
+                ]
+            ]
+            [ Styled.text <|
+                if lockY then
+                    "Unlock Y"
+
+                else
+                    "Lock Y"
+            ]
+            :: (points
+                    |> List.map
+                        (Point3d.on plane
+                            >> Point3d.projectInto viewPlane
+                            >> viewPoint
+                        )
+               )
 
 
-viewPoint : Point2d Length.Meters TopLeftCoordinates -> Html msg
+viewPoint : Point2d Length.Meters TopLeftCoordinates -> Styled.Html msg
 viewPoint point =
     let
         { x, y } =
@@ -191,23 +226,22 @@ viewPoint point =
         size =
             px 10
     in
-    Styled.toUnstyled <|
-        Styled.div
-            [ css
-                [ position absolute
-                , backgroundColor <| hex "777777"
-                , borderRadius <| pct 100
-                , width size
-                , height size
-                , left <| px x
-                , top <| px y
-                , transforms
-                    [ translateX <| pct -50
-                    , translateY <| pct -50
-                    ]
+    Styled.div
+        [ css
+            [ position absolute
+            , backgroundColor <| hex "777777"
+            , borderRadius <| pct 100
+            , width size
+            , height size
+            , left <| px x
+            , top <| px y
+            , transforms
+                [ translateX <| pct -50
+                , translateY <| pct -50
                 ]
             ]
-            []
+        ]
+        []
 
 
 type TopLeftCoordinates
