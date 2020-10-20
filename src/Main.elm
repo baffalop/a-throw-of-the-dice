@@ -201,6 +201,10 @@ viewPoint point =
                 , height size
                 , left <| px x
                 , top <| px y
+                , transforms
+                    [ translateX <| pct -50
+                    , translateY <| pct -50
+                    ]
                 ]
             ]
             []
