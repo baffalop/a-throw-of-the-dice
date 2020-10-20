@@ -16,7 +16,11 @@ import Pixels
 import Point2d exposing (Point2d)
 import Point3d
 import Quantity
+import Rectangle2d exposing (Rectangle2d)
+import Rectangle3d
 import SketchPlane3d exposing (SketchPlane3d)
+import Svg.Styled
+import Svg.Styled.Attributes as SvgAttr
 import Vector3d
 
 
@@ -34,7 +38,7 @@ main =
 
 
 type alias Model =
-    { points : List (Point2d Length.Meters TopLeftCoordinates)
+    { rects : List (Rectangle2d Length.Meters TopLeftCoordinates)
     , plane : SketchPlane3d Length.Meters World { defines : TopLeftCoordinates }
     , viewPlane : SketchPlane3d Length.Meters World { defines : TopLeftCoordinates }
     , mouse : MouseState
@@ -62,13 +66,13 @@ type Msg
 
 init : () -> ( Model, Cmd msg )
 init () =
-    { points =
-        [ ( 2, 2 )
-        , ( 2, 16 )
-        , ( 18, 16 )
-        , ( 18, 2 )
+    { rects =
+        [ ( 2, 2, 3 )
+        , ( 2, 16, 5 )
+        , ( 18, 16, 3 )
+        , ( 18, 2, 2 )
         ]
-            |> List.map (uncurry Point2d.centimeters)
+            |> List.map toRectangle
     , plane = SketchPlane3d.xy
     , viewPlane =
         SketchPlane3d.xy
@@ -78,6 +82,16 @@ init () =
     , lockY = False
     }
         |> withNoCmd
+
+
+toRectangle : ( Float, Float, Float ) -> Rectangle2d Length.Meters TopLeftCoordinates
+toRectangle ( x, y, length ) =
+    Rectangle2d.with
+        { x1 = Length.centimeters x
+        , y1 = Length.centimeters y
+        , x2 = Length.centimeters <| x + length
+        , y2 = Length.centimeters <| y + 1.5
+        }
 
 
 subscriptions : Model -> Sub Msg
@@ -154,22 +168,8 @@ update msg model =
                     model |> withNoCmd
 
                 Down { firstX, firstY } ->
-                    let
-                        withMouseUp =
-                            { model | mouse = Up }
-                    in
-                    if abs (x - firstX) < 2 && abs (y - firstY) < 2 then
-                        case plotPointAt x y model.plane model.viewPlane of
-                            Nothing ->
-                                withMouseUp |> withNoCmd
-
-                            Just point ->
-                                { withMouseUp | points = point :: model.points }
-                                    |> withNoCmd
-
-                    else
-                        withMouseUp
-                            |> withNoCmd
+                    { model | mouse = Up }
+                        |> withNoCmd
 
 
 plotPointAt x y plane viewPlane =
@@ -190,9 +190,9 @@ plotPointAt x y plane viewPlane =
 
 
 view : Model -> List (Html Msg)
-view { points, plane, viewPlane, lockY } =
+view { rects, plane, viewPlane, lockY } =
     List.map Styled.toUnstyled <|
-        Styled.button
+        [ Styled.button
             [ StyledEvents.onClick ToggleLockY
             , StyledEvents.stopPropagationOn "mouseup" <| Decode.succeed ( NoOp, True )
             , StyledEvents.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
@@ -208,40 +208,37 @@ view { points, plane, viewPlane, lockY } =
                 else
                     "Lock Y"
             ]
-            :: (points
-                    |> List.map
-                        (Point3d.on plane
-                            >> Point3d.projectInto viewPlane
-                            >> viewPoint
-                        )
-               )
-
-
-viewPoint : Point2d Length.Meters TopLeftCoordinates -> Styled.Html msg
-viewPoint point =
-    let
-        { x, y } =
-            Point2d.toRecord Length.inCssPixels point
-
-        size =
-            px 10
-    in
-    Styled.div
-        [ css
-            [ position absolute
-            , backgroundColor <| hex "777777"
-            , borderRadius <| pct 100
-            , width size
-            , height size
-            , left <| px x
-            , top <| px y
-            , transforms
-                [ translateX <| pct -50
-                , translateY <| pct -50
+        , Styled.br [] []
+        , rects
+            |> List.map
+                (Rectangle3d.on plane
+                    >> Rectangle3d.vertices
+                    >> List.map (Point3d.projectInto viewPlane)
+                    >> viewPolygon
+                )
+            |> Svg.Styled.svg
+                [ SvgAttr.width "1200px"
+                , SvgAttr.height "1200px"
                 ]
-            ]
+        ]
+
+
+viewPolygon : List (Point2d Length.Meters TopLeftCoordinates) -> Svg.Styled.Svg msg
+viewPolygon points =
+    Svg.Styled.polygon
+        [ SvgAttr.points <| geometryToSvgPoints points
+        , SvgAttr.strokeLinejoin "round"
         ]
         []
+
+
+geometryToSvgPoints : List (Point2d Length.Meters TopLeftCoordinates) -> String
+geometryToSvgPoints =
+    List.map
+        (Point2d.toRecord Length.inCssPixels
+            >> (\{ x, y } -> String.fromFloat x ++ "," ++ String.fromFloat y)
+        )
+        >> String.join " "
 
 
 type TopLeftCoordinates
