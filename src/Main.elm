@@ -53,8 +53,7 @@ type alias Model =
     { rects : List (Rectangle2d Length.Meters TopLeftCoordinates)
     , sourcePlane : Plane
     , viewPlane : Plane
-    , drawnRect :
-        Maybe DrawnRect
+    , drawnRect : Maybe DrawnRect
     , lockY : Bool
     }
 
