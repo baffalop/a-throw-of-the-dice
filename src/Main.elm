@@ -67,7 +67,7 @@ type alias DrawnRect =
 
 type Msg
     = MouseDown Float Float
-    | MouseUp Float Float
+    | MouseUp
     | MouseMove Float Float
     | Wheel Float Float
     | ToggleLockY
@@ -131,7 +131,7 @@ update msg model =
                             (( x, y ) |> plottedOn model.sourcePlane model.viewPlane)
                 }
 
-            MouseUp x y ->
+            MouseUp ->
                 { model
                     | drawnRect = Nothing
                     , rects = includeDrawnRect model.drawnRect model.rects
@@ -189,7 +189,7 @@ view ({ sourcePlane, viewPlane, rects, drawnRect } as model) =
                 , SvgAttr.height "1200px"
                 , StyledEvents.on "mousedown" <| mouseDecoder MouseDown
                 , StyledEvents.on "mousemove" <| mouseDecoder MouseMove
-                , StyledEvents.on "mouseup" <| mouseDecoder MouseUp
+                , StyledEvents.onMouseUp MouseUp
                 , StyledEvents.preventDefaultOn "wheel" <| wheelDecoder (\x y -> ( Wheel x y, True ))
                 ]
         ]
