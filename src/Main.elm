@@ -186,10 +186,10 @@ view ({ sourcePlane, viewPlane, rects, drawnRect } as model) =
             |> Svg.Styled.svg
                 [ SvgAttr.width "1200px"
                 , SvgAttr.height "1200px"
-                , StyledEvents.on "mousedown" <| mouseDecoder MouseDown
-                , StyledEvents.on "mousemove" <| mouseDecoder MouseMove
+                , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
+                , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
                 , StyledEvents.onMouseUp MouseUp
-                , StyledEvents.preventDefaultOn "wheel" <| wheelDecoder (\x y -> ( Wheel x y, True ))
+                , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
                 ]
         ]
 
@@ -300,20 +300,12 @@ pixelDensity =
         |> Quantity.per (Length.inches 1)
 
 
-wheelDecoder : (Float -> Float -> msg) -> Decoder msg
-wheelDecoder mapper =
+coordinateDecoder : String -> (Float -> Float -> msg) -> Decoder msg
+coordinateDecoder prefix mapper =
     Decode.map2
         mapper
-        (Decode.field "deltaX" <| Decode.float)
-        (Decode.field "deltaY" <| Decode.float)
-
-
-mouseDecoder : (Float -> Float -> msg) -> Decoder msg
-mouseDecoder mapper =
-    Decode.map2
-        mapper
-        (Decode.field "offsetX" <| Decode.float)
-        (Decode.field "offsetY" <| Decode.float)
+        (Decode.field (prefix ++ "X") <| Decode.float)
+        (Decode.field (prefix ++ "Y") <| Decode.float)
 
 
 withNoCmd : a -> ( a, Cmd msg )
