@@ -37,29 +37,17 @@ main =
         }
 
 
-type alias Plane =
-    SketchPlane3d Length.Meters World { defines : TopLeftCoordinates }
-
-
-type alias PlanePoint =
-    Point2d Length.Meters TopLeftCoordinates
-
-
-type alias Rect =
-    Rectangle2d Length.Meters TopLeftCoordinates
-
-
 type alias Model =
-    { rects : List (Rectangle2d Length.Meters TopLeftCoordinates)
-    , sourcePlane : Plane
-    , viewPlane : Plane
+    { rects : List Rect
+    , sourcePlane : SourcePlane
+    , viewPlane : ViewPlane
     , drawnRect : Maybe DrawnRect
     , lockY : Bool
     }
 
 
 type alias DrawnRect =
-    { originPoint : PlanePoint
+    { originPoint : SourcePoint
     , rect : Rect
     }
 
@@ -75,13 +63,7 @@ type Msg
 
 init : () -> ( Model, Cmd msg )
 init () =
-    { rects =
-        [ ( 2, 2, 3 )
-        , ( 2, 16, 5 )
-        , ( 18, 16, 3 )
-        , ( 18, 2, 2 )
-        ]
-            |> List.map (\( x, y, length ) -> rectFrom (Point2d.centimeters x y) (Point2d.centimeters (x + length) 0))
+    { rects = []
     , sourcePlane = SketchPlane3d.xy
     , viewPlane =
         SketchPlane3d.xy
@@ -194,7 +176,7 @@ view ({ sourcePlane, viewPlane, rects, drawnRect } as model) =
         ]
 
 
-viewRects : Plane -> Plane -> List Rect -> List (Svg.Styled.Svg msg)
+viewRects : SourcePlane -> ViewPlane -> List Rect -> List (Svg.Styled.Svg msg)
 viewRects plane viewPlane =
     List.map
         (Rectangle3d.on plane
@@ -204,7 +186,7 @@ viewRects plane viewPlane =
         )
 
 
-viewPolygon : List PlanePoint -> Svg.Styled.Svg msg
+viewPolygon : List ViewPoint -> Svg.Styled.Svg msg
 viewPolygon points =
     Svg.Styled.polygon
         [ SvgAttr.points <| geometryToSvgPoints points
@@ -213,7 +195,7 @@ viewPolygon points =
         []
 
 
-geometryToSvgPoints : List PlanePoint -> String
+geometryToSvgPoints : List ViewPoint -> String
 geometryToSvgPoints =
     List.map
         (Point2d.toRecord Length.inCssPixels
@@ -223,10 +205,46 @@ geometryToSvgPoints =
 
 
 
--- GEOMETRY
+-- GEOMETRY TYPES
 
 
-rectFrom : PlanePoint -> PlanePoint -> Rect
+type alias SourcePlane =
+    SketchPlane3d Length.Meters World { defines : SourceCoordinates }
+
+
+type alias ViewPlane =
+    SketchPlane3d Length.Meters World { defines : ViewCoordinates }
+
+
+type SourceCoordinates
+    = SourceCoordinates
+
+
+type ViewCoordinates
+    = ViewCoordinates
+
+
+type World
+    = World
+
+
+type alias SourcePoint =
+    Point2d Length.Meters SourceCoordinates
+
+
+type alias ViewPoint =
+    Point2d Length.Meters ViewCoordinates
+
+
+type alias Rect =
+    Rectangle2d Length.Meters SourceCoordinates
+
+
+
+-- GEOMETRY FUNCTIONS
+
+
+rectFrom : SourcePoint -> SourcePoint -> Rect
 rectFrom originPoint endPoint =
     let
         halfHeight =
@@ -248,7 +266,7 @@ rectFrom originPoint endPoint =
     Rectangle2d.from topLeft bottomRight
 
 
-plottedOn : Plane -> Plane -> ( Float, Float ) -> Maybe PlanePoint
+plottedOn : SourcePlane -> ViewPlane -> ( Float, Float ) -> Maybe SourcePoint
 plottedOn sourcePlane viewPlane ( x, y ) =
     let
         translationVector =
@@ -263,6 +281,10 @@ plottedOn sourcePlane viewPlane ( x, y ) =
         |> Maybe.map (Point3d.projectInto sourcePlane)
 
 
+
+-- HELPERS
+
+
 includeDrawnRect : Maybe DrawnRect -> List Rect -> List Rect
 includeDrawnRect newRect rects =
     case newRect of
@@ -271,33 +293,6 @@ includeDrawnRect newRect rects =
 
         Just { rect } ->
             rect :: rects
-
-
-type TopLeftCoordinates
-    = TopLeftCoordinates
-
-
-type World
-    = World
-
-
-tiltAxis =
-    Axis3d.x
-        |> Axis3d.translateBy (Vector3d.centimeters 0 25 0)
-
-
-turnAxis =
-    Axis3d.y
-        |> Axis3d.translateBy (Vector3d.centimeters 11 0 0)
-
-
-wheelCoefficient =
-    0.3
-
-
-pixelDensity =
-    Pixels.pixels 96
-        |> Quantity.per (Length.inches 1)
 
 
 coordinateDecoder : String -> (Float -> Float -> msg) -> Decoder msg
@@ -311,3 +306,26 @@ coordinateDecoder prefix mapper =
 withNoCmd : a -> ( a, Cmd msg )
 withNoCmd =
     flip Tuple.pair Cmd.none
+
+
+
+-- CONSTANTS
+
+
+tiltAxis =
+    Axis3d.x
+        |> Axis3d.translateBy (Vector3d.centimeters 0 25 0)
+
+
+turnAxis =
+    Axis3d.y
+        |> Axis3d.translateBy (Vector3d.centimeters 11 0 0)
+
+
+pixelDensity =
+    Pixels.pixels 96
+        |> Quantity.per (Length.inches 1)
+
+
+wheelCoefficient =
+    0.3
