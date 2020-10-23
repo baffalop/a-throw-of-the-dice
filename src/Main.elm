@@ -169,7 +169,15 @@ view ({ sourcePlane, viewPlane, rects, drawnRect } as model) =
                     "Lock Y"
             ]
         , Styled.br [] []
-        , Styled.div []
+        , Styled.div
+            [ css
+                [ margin <| px 30
+                , display inlineBlock
+                , border <| px 2
+                , borderStyle <| solid
+                , borderColor <| hex "000000"
+                ]
+            ]
             [ includeDrawnRect drawnRect rects
                 |> viewRects sourcePlane viewPlane
                 |> Svg.Styled.svg
