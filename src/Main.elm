@@ -63,7 +63,13 @@ type Msg
 
 init : () -> ( Model, Cmd msg )
 init () =
-    { rects = []
+    { rects =
+        [ ( 2, 2, 3 )
+        , ( 2, 16, 5 )
+        , ( 18, 16, 3 )
+        , ( 18, 2, 2 )
+        ]
+            |> List.map rectByNumbers
     , sourcePlane = SketchPlane3d.xy
     , viewPlane =
         SketchPlane3d.xy
@@ -281,6 +287,11 @@ plottedOn sourcePlane viewPlane ( x, y ) =
         |> Axis3d.translateBy translationVector
         |> Axis3d.intersectionWithPlane (SketchPlane3d.toPlane sourcePlane)
         |> Maybe.map (Point3d.projectInto sourcePlane)
+
+
+rectByNumbers : ( Float, Float, Float ) -> Rect
+rectByNumbers ( x, y, length ) =
+    rectFrom (Point2d.centimeters x y) (Point2d.centimeters (x + length) 0)
 
 
 
