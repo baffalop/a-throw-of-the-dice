@@ -142,9 +142,9 @@ view { sourcePlane, viewPlane, rects, drawnRect } =
     List.map Styled.toUnstyled <|
         [ Styled.div
             [ css
-                [ margin <| px 30
-                , display inlineBlock
-                , border <| px 2
+                [ display inlineBlock
+                , margin <| px 30
+                , border <| px 4
                 , borderStyle <| solid
                 , borderColor <| hex "732e43"
                 , fill <| hex "5a6e75"
