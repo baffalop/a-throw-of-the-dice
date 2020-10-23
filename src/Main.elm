@@ -175,7 +175,8 @@ view ({ sourcePlane, viewPlane, rects, drawnRect } as model) =
                 , display inlineBlock
                 , border <| px 2
                 , borderStyle <| solid
-                , borderColor <| hex "000000"
+                , borderColor <| hex "732e43"
+                , fill <| hex "5a6e75"
                 ]
             ]
             [ includeDrawnRect drawnRect rects
@@ -206,7 +207,6 @@ viewPolygon : List ViewPoint -> Svg.Styled.Svg msg
 viewPolygon points =
     Svg.Styled.polygon
         [ SvgAttr.points <| geometryToSvgPoints points
-        , SvgAttr.strokeLinejoin "round"
         ]
         []
 
