@@ -173,8 +173,8 @@ view ({ sourcePlane, viewPlane, rects, drawnRect } as model) =
             [ includeDrawnRect drawnRect rects
                 |> viewRects sourcePlane viewPlane
                 |> Svg.Styled.svg
-                    [ SvgAttr.width "1200px"
-                    , SvgAttr.height "1200px"
+                    [ SvgAttr.width "1000px"
+                    , SvgAttr.height "800px"
                     , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
                     , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
                     , StyledEvents.onMouseUp MouseUp
