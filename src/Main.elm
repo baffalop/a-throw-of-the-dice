@@ -340,7 +340,7 @@ tiltAxis =
 
 turnAxis =
     Axis3d.y
-        |> Axis3d.translateBy (Vector3d.centimeters 11 0 0)
+        |> Axis3d.translateBy (Vector3d.centimeters 13 0 0)
 
 
 pixelDensity =
