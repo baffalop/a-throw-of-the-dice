@@ -42,7 +42,6 @@ type alias Model =
     , sourcePlane : SourcePlane
     , viewPlane : ViewPlane
     , drawnRect : Maybe DrawnRect
-    , lockY : Bool
     }
 
 
@@ -57,7 +56,6 @@ type Msg
     | MouseUp
     | MouseMove Float Float
     | Wheel Float Float
-    | ToggleLockY
     | NoOp
 
 
@@ -76,7 +74,6 @@ init () =
             |> SketchPlane3d.offsetBy (Length.meters -3)
             |> SketchPlane3d.rotateAround tiltAxis (Angle.degrees 20)
     , drawnRect = Nothing
-    , lockY = True
     }
         |> withNoCmd
 
@@ -92,9 +89,6 @@ update msg model =
         case msg of
             NoOp ->
                 model
-
-            ToggleLockY ->
-                { model | lockY = not model.lockY }
 
             MouseDown x y ->
                 { model
@@ -136,14 +130,6 @@ update msg model =
                     | sourcePlane =
                         model.sourcePlane
                             |> SketchPlane3d.rotateAround turnAxis offsetAngleX
-                    , viewPlane =
-                        model.viewPlane
-                            |> (if model.lockY then
-                                    identity
-
-                                else
-                                    SketchPlane3d.rotateAround tiltAxis offsetAngleY
-                               )
                 }
 
 
@@ -152,24 +138,9 @@ update msg model =
 
 
 view : Model -> List (Html Msg)
-view ({ sourcePlane, viewPlane, rects, drawnRect } as model) =
+view { sourcePlane, viewPlane, rects, drawnRect } =
     List.map Styled.toUnstyled <|
-        [ Styled.button
-            [ StyledEvents.onClick ToggleLockY
-            , css
-                [ padding <| px 4
-                , margin <| px 10
-                ]
-            ]
-            [ Styled.text <|
-                if model.lockY then
-                    "Unlock Y"
-
-                else
-                    "Lock Y"
-            ]
-        , Styled.br [] []
-        , Styled.div
+        [ Styled.div
             [ css
                 [ margin <| px 30
                 , display inlineBlock
