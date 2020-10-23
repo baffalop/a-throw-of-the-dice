@@ -163,16 +163,18 @@ view ({ sourcePlane, viewPlane, rects, drawnRect } as model) =
                     "Lock Y"
             ]
         , Styled.br [] []
-        , includeDrawnRect drawnRect rects
-            |> viewRects sourcePlane viewPlane
-            |> Svg.Styled.svg
-                [ SvgAttr.width "1200px"
-                , SvgAttr.height "1200px"
-                , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
-                , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
-                , StyledEvents.onMouseUp MouseUp
-                , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
-                ]
+        , Styled.div []
+            [ includeDrawnRect drawnRect rects
+                |> viewRects sourcePlane viewPlane
+                |> Svg.Styled.svg
+                    [ SvgAttr.width "1200px"
+                    , SvgAttr.height "1200px"
+                    , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
+                    , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
+                    , StyledEvents.onMouseUp MouseUp
+                    , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
+                    ]
+            ]
         ]
 
 
