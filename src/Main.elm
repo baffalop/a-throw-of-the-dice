@@ -335,7 +335,7 @@ withNoCmd =
 
 tiltAxis =
     Axis3d.x
-        |> Axis3d.translateBy (Vector3d.centimeters 0 25 0)
+        |> Axis3d.translateBy (Vector3d.centimeters 0 21 0)
 
 
 turnAxis =
