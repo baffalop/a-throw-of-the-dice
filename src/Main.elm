@@ -129,7 +129,7 @@ update msg model =
                 { model
                     | sourcePlane =
                         model.sourcePlane
-                            |> SketchPlane3d.rotateAround turnAxis offsetAngleX
+                            |> SketchPlane3d.rotateAround turnAxis offsetAngleY
                 }
 
 
