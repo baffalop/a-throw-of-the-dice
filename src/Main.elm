@@ -175,9 +175,9 @@ viewRects plane viewPlane =
 
 
 viewPolygon : List ViewPoint -> Svg.Styled.Svg msg
-viewPolygon points =
-    Svg.Styled.polygon
-        [ SvgAttr.points <| geometryToSvgPoints points
+viewPolygon vertices =
+    Svg.Styled.path
+        [ SvgAttr.d <| "M " ++ geometryToSvgPoints vertices ++ " Z"
         ]
         []
 
