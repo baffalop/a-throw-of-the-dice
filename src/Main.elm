@@ -44,6 +44,7 @@ type alias Model =
     , sourcePlane : SourcePlane
     , viewPlane : ViewPlane
     , drawnRect : Maybe DrawnRect
+    , devicePixelRatio : Float
     }
 
 
@@ -61,8 +62,8 @@ type Msg
     | NoOp
 
 
-init : () -> ( Model, Cmd msg )
-init () =
+init : Float -> ( Model, Cmd msg )
+init devicePixelRatio =
     { rects =
         [ ( 2, 2, 3 )
         , ( 2, 18, 3 )
@@ -76,6 +77,7 @@ init () =
             |> SketchPlane3d.offsetBy (Length.meters -3)
             |> SketchPlane3d.rotateAround tiltAxis (Angle.degrees 20)
     , drawnRect = Nothing
+    , devicePixelRatio = devicePixelRatio
     }
         |> withNoCmd
 
@@ -96,7 +98,7 @@ update msg model =
                 { model
                     | drawnRect =
                         ( x, y )
-                            |> plottedOn model.sourcePlane model.viewPlane
+                            |> plottedOn model.sourcePlane model.viewPlane model.devicePixelRatio
                             |> Maybe.map
                                 (\point ->
                                     { originPoint = point
@@ -114,7 +116,7 @@ update msg model =
                         { model
                             | drawnRect =
                                 ( x, y )
-                                    |> plottedOn model.sourcePlane model.viewPlane
+                                    |> plottedOn model.sourcePlane model.viewPlane model.devicePixelRatio
                                     |> Maybe.map (\endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
                         }
 
@@ -330,12 +332,12 @@ rectFrom originPoint endPoint =
     Rectangle2d.from topLeft bottomRight
 
 
-plottedOn : SourcePlane -> ViewPlane -> ( Float, Float ) -> Maybe SourcePoint
-plottedOn sourcePlane viewPlane ( x, y ) =
+plottedOn : SourcePlane -> ViewPlane -> Float -> ( Float, Float ) -> Maybe SourcePoint
+plottedOn sourcePlane viewPlane pixelRatio ( x, y ) =
     let
         translationVector =
             Point2d.pixels x y
-                |> Point2d.at_ pixelDensity
+                |> Point2d.at_ (resolution pixelRatio)
                 |> Point3d.on viewPlane
                 |> Vector3d.from (SketchPlane3d.originPoint viewPlane)
     in
@@ -404,8 +406,10 @@ turnAxis =
         |> Axis3d.translateBy (Vector3d.centimeters 13 0 0)
 
 
-pixelDensity =
-    Pixels.pixels 96
+resolution : Float -> Quantity.Quantity Float (Quantity.Rate Pixels.Pixels Length.Meters)
+resolution ratio =
+    (48 * ratio)
+        |> Pixels.pixels
         |> Quantity.per (Length.inches 1)
 
 
