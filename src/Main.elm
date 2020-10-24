@@ -64,11 +64,18 @@ type Msg
 
 init : Float -> ( Model, Cmd msg )
 init devicePixelRatio =
+    let
+        xEdge =
+            Tuple.first boardSize |> (*) (21.5 / 1000)
+
+        yEdge =
+            Tuple.second boardSize |> (*) (18 / 800)
+    in
     { rects =
         [ ( 2, 2, 3 )
-        , ( 2, 18, 3 )
-        , ( 21, 18, 3 )
-        , ( 21, 2, 3 )
+        , ( 2, yEdge, 3 )
+        , ( xEdge, yEdge, 3 )
+        , ( xEdge, 2, 3 )
         ]
             |> List.map rectByNumbers
     , sourcePlane = SketchPlane3d.xy
@@ -162,8 +169,8 @@ view { sourcePlane, viewPlane, rects, drawnRect } =
             [ includeDrawnRect drawnRect rects
                 |> List.map (viewRect sourcePlane viewPlane)
                 |> Svg.Styled.svg
-                    [ SvgAttr.width "1000px"
-                    , SvgAttr.height "800px"
+                    [ SvgAttr.width <| flip (++) "px" <| String.fromInt <| Tuple.first boardSize
+                    , SvgAttr.height <| flip (++) "px" <| String.fromInt <| Tuple.second boardSize
                     , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
                     , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
                     , StyledEvents.onMouseUp MouseUp
@@ -407,14 +414,26 @@ withNoCmd =
 -- CONSTANTS
 
 
+boardSize =
+    ( 1000, 800 )
+
+
 tiltAxis =
+    let
+        y =
+            Tuple.second boardSize |> (*) (21 / 800)
+    in
     Axis3d.x
-        |> Axis3d.translateBy (Vector3d.centimeters 0 21 0)
+        |> Axis3d.translateBy (Vector3d.centimeters 0 y 0)
 
 
 turnAxis =
+    let
+        x =
+            Tuple.first boardSize |> (*) (13.2 / 1000)
+    in
     Axis3d.y
-        |> Axis3d.translateBy (Vector3d.centimeters 13 0 0)
+        |> Axis3d.translateBy (Vector3d.centimeters x 0 0)
 
 
 resolution : Float -> Quantity.Quantity Float (Quantity.Rate Pixels.Pixels Length.Meters)
