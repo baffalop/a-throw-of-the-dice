@@ -1,4 +1,4 @@
-module Main exposing (main)
+module Main exposing (..)
 
 import Angle
 import Axis3d
@@ -156,7 +156,7 @@ view { sourcePlane, viewPlane, rects, drawnRect } =
                 ]
             ]
             [ includeDrawnRect drawnRect rects
-                |> viewRects sourcePlane viewPlane
+                |> List.map (viewRect sourcePlane viewPlane)
                 |> Svg.Styled.svg
                     [ SvgAttr.width "1000px"
                     , SvgAttr.height "800px"
@@ -166,38 +166,68 @@ view { sourcePlane, viewPlane, rects, drawnRect } =
                     , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
                     ]
             ]
-        ]
 
 
-viewRects : SourcePlane -> ViewPlane -> List Rect -> List (Svg.Styled.Svg msg)
-viewRects plane viewPlane =
-    List.map
-        (Rectangle3d.on plane
-            >> Rectangle3d.vertices
-            >> List.map (Point3d.projectInto viewPlane)
-            >> viewPolygon
-        )
+viewRect : SourcePlane -> ViewPlane -> Rect -> Svg.Styled.Svg msg
+viewRect plane viewPlane rect =
+    let
+        vertices =
+            rect
+                |> Rectangle3d.on plane
+                |> Rectangle3d.vertices
+                |> List.map (Point3d.projectInto viewPlane)
+                |> cycle1
 
+        verticesRotated =
+            vertices |> List.drop 1 |> cycle1
 
-viewPolygon : List ViewPoint -> Svg.Styled.Svg msg
-viewPolygon vertices =
+        midpoints =
+            List.map2
+                (\a b -> Point2d.interpolateFrom a b 0.5)
+                vertices
+                verticesRotated
+
+        spline =
+            List.map2 SplineSegment midpoints verticesRotated
+                ++ (List.head midpoints |> Maybe.map (PathPoint >> List.singleton) |> Maybe.withDefault [])
+    in
     Svg.Styled.path
-        [ SvgAttr.d <| "M " ++ geometryToSvgPoints vertices ++ " Z"
+        [ SvgAttr.d <| "M " ++ svgPath spline ++ " Z"
         ]
         []
 
 
-geometryToSvgPoints : List ViewPoint -> String
-geometryToSvgPoints =
+
+-- SVG
+
+
+type PathComponent
+    = PathPoint ViewPoint
+    | SplineSegment ViewPoint ViewPoint
+
+
+svgCoord : ViewPoint -> String
+svgCoord =
+    Point2d.toRecord Length.inCssPixels
+        >> (\{ x, y } -> String.fromFloat x ++ "," ++ String.fromFloat y)
+
+
+svgPath : List PathComponent -> String
+svgPath =
     List.map
-        (Point2d.toRecord Length.inCssPixels
-            >> (\{ x, y } -> String.fromFloat x ++ "," ++ String.fromFloat y)
+        (\component ->
+            case component of
+                PathPoint point ->
+                    svgCoord point
+
+                SplineSegment point anchor ->
+                    svgCoord point ++ " Q" ++ svgCoord anchor
         )
         >> String.join " "
 
 
 
--- GEOMETRY TYPES
+-- GEOMETRY
 
 
 type alias SourcePlane =
@@ -230,10 +260,6 @@ type alias ViewPoint =
 
 type alias Rect =
     Rectangle2d Length.Meters SourceCoordinates
-
-
-
--- GEOMETRY FUNCTIONS
 
 
 rectFrom : SourcePoint -> SourcePoint -> Rect
@@ -298,6 +324,11 @@ coordinateDecoder prefix mapper =
         mapper
         (Decode.field (prefix ++ "X") <| Decode.float)
         (Decode.field (prefix ++ "Y") <| Decode.float)
+
+
+cycle1 : List a -> List a
+cycle1 list =
+    list ++ (List.head list |> Maybe.map List.singleton |> Maybe.withDefault [])
 
 
 withNoCmd : a -> ( a, Cmd msg )
