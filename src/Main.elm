@@ -5,6 +5,7 @@ import Axis3d
 import Basics.Extra exposing (..)
 import Browser
 import Css exposing (..)
+import Direction2d
 import Html exposing (Html)
 import Html.Lazy
 import Html.Styled as Styled
@@ -176,23 +177,13 @@ viewRect plane viewPlane rect =
                 |> Rectangle3d.on plane
                 |> Rectangle3d.vertices
                 |> List.map (Point3d.projectInto viewPlane)
+
+        path =
+            roundCorners (Length.centimeters 0.3) vertices
                 |> cycle1
-
-        verticesRotated =
-            vertices |> List.drop 1 |> cycle1
-
-        midpoints =
-            List.map2
-                (\a b -> Point2d.interpolateFrom a b 0.5)
-                vertices
-                verticesRotated
-
-        spline =
-            List.map2 SplineSegment midpoints verticesRotated
-                ++ (List.head midpoints |> Maybe.map (PathPoint >> List.singleton) |> Maybe.withDefault [])
     in
     Svg.Styled.path
-        [ SvgAttr.d <| "M " ++ svgPath spline ++ " Z"
+        [ SvgAttr.d <| svgClosedPath path
         ]
         []
 
@@ -201,9 +192,48 @@ viewRect plane viewPlane rect =
 -- SVG
 
 
-type PathComponent
-    = PathPoint ViewPoint
-    | SplineSegment ViewPoint ViewPoint
+type SplinePoint
+    = LinePoint ViewPoint
+    | AnchorPoint ViewPoint
+
+
+type alias Spline =
+    List SplinePoint
+
+
+roundCorners : Length.Length -> List ViewPoint -> Spline
+roundCorners radius =
+    mapPairs (roundCorner radius) >> List.concat
+
+
+roundCorner : Length.Length -> ViewPoint -> ViewPoint -> Spline
+roundCorner radius a b =
+    let
+        midpoint =
+            Point2d.interpolateFrom a b 0.5
+    in
+    if Point2d.distanceFrom midpoint b |> Quantity.lessThan radius then
+        [ LinePoint midpoint
+        , AnchorPoint b
+        ]
+
+    else
+        let
+            radiusVector =
+                Direction2d.from a b
+                    |> Maybe.map (Vector2d.withLength radius)
+                    |> Maybe.withDefault Vector2d.zero
+
+            anchorA =
+                a |> Point2d.translateBy radiusVector
+
+            anchorB =
+                b |> Point2d.translateBy (Vector2d.reverse radiusVector)
+        in
+        [ LinePoint anchorA
+        , LinePoint anchorB
+        , AnchorPoint b
+        ]
 
 
 svgCoord : ViewPoint -> String
@@ -212,18 +242,34 @@ svgCoord =
         >> (\{ x, y } -> String.fromFloat x ++ "," ++ String.fromFloat y)
 
 
-svgPath : List PathComponent -> String
-svgPath =
-    List.map
-        (\component ->
-            case component of
-                PathPoint point ->
+svgClosedPath : Spline -> String
+svgClosedPath spline =
+    let
+        printPoints a b =
+            case ( a, b ) of
+                ( LinePoint _, LinePoint point ) ->
+                    "L" ++ svgCoord point
+
+                ( AnchorPoint _, LinePoint point ) ->
                     svgCoord point
 
-                SplineSegment point anchor ->
-                    svgCoord point ++ " Q" ++ svgCoord anchor
-        )
-        >> String.join " "
+                ( _, AnchorPoint point ) ->
+                    "Q" ++ svgCoord point
+
+        first =
+            case List.head spline of
+                Just (LinePoint point) ->
+                    svgCoord point
+
+                _ ->
+                    ""
+    in
+    spline
+        |> cycle1
+        |> mapPairs printPoints
+        |> (::) first
+        |> String.join " "
+        |> (\s -> "M " ++ s ++ " Z")
 
 
 
@@ -324,6 +370,14 @@ coordinateDecoder prefix mapper =
         mapper
         (Decode.field (prefix ++ "X") <| Decode.float)
         (Decode.field (prefix ++ "Y") <| Decode.float)
+
+
+mapPairs : (a -> a -> b) -> List a -> List b
+mapPairs f list =
+    list
+        |> cycle1
+        |> List.drop 1
+        |> List.map2 f list
 
 
 cycle1 : List a -> List a
