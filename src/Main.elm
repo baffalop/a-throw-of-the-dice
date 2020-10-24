@@ -193,7 +193,7 @@ viewRect plane viewPlane rect =
 
         path =
             roundCorners (Length.centimeters 0.3) vertices
-                |> cycle1
+                |> wrapAround
     in
     Svg.Styled.path
         [ SvgAttr.d <| svgClosedPath path
@@ -278,7 +278,7 @@ svgClosedPath spline =
                     ""
     in
     spline
-        |> cycle1
+        |> wrapAround
         |> mapPairs printPoints
         |> (::) first
         |> String.join " "
@@ -388,13 +388,13 @@ coordinateDecoder prefix mapper =
 mapPairs : (a -> a -> b) -> List a -> List b
 mapPairs f list =
     list
-        |> cycle1
+        |> wrapAround
         |> List.drop 1
         |> List.map2 f list
 
 
-cycle1 : List a -> List a
-cycle1 list =
+wrapAround : List a -> List a
+wrapAround list =
     list ++ (List.head list |> Maybe.map List.singleton |> Maybe.withDefault [])
 
 
