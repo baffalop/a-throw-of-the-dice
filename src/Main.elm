@@ -6,6 +6,7 @@ import Basics.Extra exposing (..)
 import Browser
 import Css exposing (..)
 import Html exposing (Html)
+import Html.Lazy
 import Html.Styled as Styled
 import Html.Styled.Attributes exposing (css)
 import Html.Styled.Events as StyledEvents
@@ -30,7 +31,7 @@ main =
         , view =
             \model ->
                 { title = "A wee playabout"
-                , body = view model
+                , body = Html.Lazy.lazy view model |> List.singleton
                 }
         , update = update
         , subscriptions = subscriptions
@@ -104,13 +105,17 @@ update msg model =
                 }
 
             MouseMove x y ->
-                { model
-                    | drawnRect =
-                        Maybe.map2
-                            (\rect endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
-                            model.drawnRect
-                            (( x, y ) |> plottedOn model.sourcePlane model.viewPlane)
-                }
+                case model.drawnRect of
+                    Nothing ->
+                        model
+
+                    Just rect ->
+                        { model
+                            | drawnRect =
+                                ( x, y )
+                                    |> plottedOn model.sourcePlane model.viewPlane
+                                    |> Maybe.map (\endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
+                        }
 
             MouseUp ->
                 { model
@@ -137,10 +142,10 @@ update msg model =
 -- VIEW
 
 
-view : Model -> List (Html Msg)
+view : Model -> Html Msg
 view { sourcePlane, viewPlane, rects, drawnRect } =
-    List.map Styled.toUnstyled <|
-        [ Styled.div
+    Styled.toUnstyled <|
+        Styled.div
             [ css
                 [ display inlineBlock
                 , margin <| px 30
