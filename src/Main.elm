@@ -65,9 +65,9 @@ init : () -> ( Model, Cmd msg )
 init () =
     { rects =
         [ ( 2, 2, 3 )
-        , ( 2, 16, 3 )
-        , ( 18, 16, 3 )
-        , ( 18, 2, 3 )
+        , ( 2, 18, 3 )
+        , ( 21, 18, 3 )
+        , ( 21, 2, 3 )
         ]
             |> List.map rectByNumbers
     , sourcePlane = SketchPlane3d.xy
