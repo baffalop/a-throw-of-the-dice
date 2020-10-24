@@ -152,6 +152,7 @@ view { sourcePlane, viewPlane, rects, drawnRect } =
             [ css
                 [ display inlineBlock
                 , margin <| px 30
+                , padding <| px 0
                 , border <| px 4
                 , borderStyle <| solid
                 , borderColor <| hex "732e43"
@@ -168,6 +169,16 @@ view { sourcePlane, viewPlane, rects, drawnRect } =
                     , StyledEvents.onMouseUp MouseUp
                     , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
                     ]
+            , Styled.div
+                [ css
+                    [ display block
+                    , padding <| px 8
+                    , backgroundColor <| hex "732e43"
+                    , color <| hex "13151f"
+                    , fontFamilies [ "Fira Code", "monospace" ]
+                    ]
+                ]
+                [ Styled.text "Draw rectangles. Scroll to spin." ]
             ]
 
 
