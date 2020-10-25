@@ -13,6 +13,8 @@ import Html.Styled as Styled
 import Html.Styled.Attributes exposing (css)
 import Json.Decode as Decode exposing (Decoder)
 import Length
+import List.Extra
+import Path.LowLevel as SvgPath exposing (DrawTo(..), Mode(..), MoveTo(..))
 import Pixels
 import Point2d exposing (Point2d)
 import Point3d
@@ -198,44 +200,59 @@ viewRect plane viewPlane rect =
                 |> Rectangle3d.on plane
                 |> Rectangle3d.vertices
                 |> List.map (Point3d.projectInto viewPlane)
+                |> wrapAround
+
+        cornerRadius =
+            Length.centimeters 0.2
 
         path =
-            roundCorners (Length.centimeters 0.3) vertices
-                |> wrapAround
+            roundCorners cornerRadius vertices
     in
-    Svg.path
-        [ SvgAttr.d <| svgClosedPath path
-        ]
-        []
+    Svg.path [ SvgAttr.d <| SvgPath.toString path ] []
 
 
 
 -- SVG
 
 
-type SplinePoint
-    = LinePoint ViewPoint
-    | AnchorPoint ViewPoint
+roundCorners : Length.Length -> List ViewPoint -> List SvgPath.SubPath
+roundCorners radius points =
+    let
+        path =
+            points
+                |> mapPairs (roundedCorner radius)
+                |> List.concat
+
+        endCoords =
+            case List.Extra.last path of
+                Just (LineTo _ (coords :: _)) ->
+                    Just coords
+
+                Just (QuadraticBezierCurveTo _ (( _, coords ) :: _)) ->
+                    Just coords
+
+                _ ->
+                    Nothing
+    in
+    endCoords
+        |> Maybe.map
+            (\coords ->
+                { moveto = MoveTo Absolute coords
+                , drawtos = path
+                }
+                    |> List.singleton
+            )
+        |> Maybe.withDefault []
 
 
-type alias Spline =
-    List SplinePoint
-
-
-roundCorners : Length.Length -> List ViewPoint -> Spline
-roundCorners radius =
-    mapPairs (roundCorner radius) >> List.concat
-
-
-roundCorner : Length.Length -> ViewPoint -> ViewPoint -> Spline
-roundCorner radius a b =
+roundedCorner : Length.Length -> ViewPoint -> ViewPoint -> List DrawTo
+roundedCorner radius a b =
     let
         midpoint =
             Point2d.interpolateFrom a b 0.5
     in
     if Point2d.distanceFrom midpoint b |> Quantity.lessThan radius then
-        [ LinePoint midpoint
-        , AnchorPoint b
+        [ QuadraticBezierCurveTo Absolute [ ( svgCoord a, svgCoord midpoint ) ]
         ]
 
     else
@@ -251,46 +268,15 @@ roundCorner radius a b =
             anchorB =
                 b |> Point2d.translateBy (Vector2d.reverse radiusVector)
         in
-        [ LinePoint anchorA
-        , LinePoint anchorB
-        , AnchorPoint b
+        [ QuadraticBezierCurveTo Absolute [ ( svgCoord a, svgCoord anchorA ) ]
+        , LineTo Absolute [ svgCoord anchorB ]
         ]
 
 
-svgCoord : ViewPoint -> String
+svgCoord : ViewPoint -> ( Float, Float )
 svgCoord =
     Point2d.toRecord Length.inCssPixels
-        >> (\{ x, y } -> String.fromFloat x ++ "," ++ String.fromFloat y)
-
-
-svgClosedPath : Spline -> String
-svgClosedPath spline =
-    let
-        printPoints a b =
-            case ( a, b ) of
-                ( LinePoint _, LinePoint point ) ->
-                    "L" ++ svgCoord point
-
-                ( AnchorPoint _, LinePoint point ) ->
-                    svgCoord point
-
-                ( _, AnchorPoint point ) ->
-                    "Q" ++ svgCoord point
-
-        first =
-            case List.head spline of
-                Just (LinePoint point) ->
-                    svgCoord point
-
-                _ ->
-                    ""
-    in
-    spline
-        |> wrapAround
-        |> mapPairs printPoints
-        |> (::) first
-        |> String.join " "
-        |> (\s -> "M " ++ s ++ " Z")
+        >> (\{ x, y } -> ( x, y ))
 
 
 
