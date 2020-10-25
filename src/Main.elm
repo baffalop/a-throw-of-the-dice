@@ -7,10 +7,10 @@ import Browser
 import Css exposing (..)
 import Direction2d
 import Html exposing (Html)
+import Html.Events as Events
 import Html.Lazy
 import Html.Styled as Styled
 import Html.Styled.Attributes exposing (css)
-import Html.Styled.Events as StyledEvents
 import Json.Decode as Decode exposing (Decoder)
 import Length
 import Pixels
@@ -20,8 +20,8 @@ import Quantity
 import Rectangle2d exposing (Rectangle2d)
 import Rectangle3d
 import SketchPlane3d exposing (SketchPlane3d)
-import Svg.Styled
-import Svg.Styled.Attributes as SvgAttr
+import Svg
+import Svg.Attributes as SvgAttr
 import Vector2d exposing (Vector2d)
 import Vector3d
 
@@ -168,14 +168,15 @@ view { sourcePlane, viewPlane, rects, drawnRect } =
             ]
             [ includeDrawnRect drawnRect rects
                 |> List.map (viewRect sourcePlane viewPlane)
-                |> Svg.Styled.svg
+                |> Svg.svg
                     [ SvgAttr.width <| flip (++) "px" <| String.fromInt <| Tuple.first boardSize
                     , SvgAttr.height <| flip (++) "px" <| String.fromInt <| Tuple.second boardSize
-                    , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
-                    , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
-                    , StyledEvents.onMouseUp MouseUp
-                    , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
+                    , Events.on "mousedown" <| coordinateDecoder "offset" MouseDown
+                    , Events.on "mousemove" <| coordinateDecoder "offset" MouseMove
+                    , Events.onMouseUp MouseUp
+                    , Events.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
                     ]
+                |> Styled.fromUnstyled
             , Styled.div
                 [ css
                     [ display block
@@ -189,7 +190,7 @@ view { sourcePlane, viewPlane, rects, drawnRect } =
             ]
 
 
-viewRect : SourcePlane -> ViewPlane -> Rect -> Svg.Styled.Svg msg
+viewRect : SourcePlane -> ViewPlane -> Rect -> Svg.Svg msg
 viewRect plane viewPlane rect =
     let
         vertices =
@@ -202,7 +203,7 @@ viewRect plane viewPlane rect =
             roundCorners (Length.centimeters 0.3) vertices
                 |> wrapAround
     in
-    Svg.Styled.path
+    Svg.path
         [ SvgAttr.d <| svgClosedPath path
         ]
         []
