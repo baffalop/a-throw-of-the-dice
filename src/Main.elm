@@ -177,6 +177,19 @@ view ({ sourcePlane, rects, drawnRect } as model) =
     let
         camera =
             makeCamera model
+
+        rectHoverCss =
+            [ Css.cursor Css.pointer
+            , Css.hover
+                [ Css.fill <| Css.hex "7da2af"
+                ]
+            ]
+
+        maybeAppendDrawnRect =
+            drawnRect
+                |> Maybe.map (viewRect sourcePlane camera [] << .rect)
+                |> Maybe.map (::)
+                |> Maybe.withDefault identity
     in
     Styled.toUnstyled <|
         Styled.div
@@ -190,8 +203,9 @@ view ({ sourcePlane, rects, drawnRect } as model) =
                 , Css.fill <| Css.hex "5a6e75"
                 ]
             ]
-            [ includeDrawnRect drawnRect rects
-                |> List.map (viewRect sourcePlane camera)
+            [ rects
+                |> List.map (viewRect sourcePlane camera rectHoverCss)
+                |> maybeAppendDrawnRect
                 |> SvgStyled.svg
                     [ SvgAttr.width <| flip (++) "px" <| String.fromInt <| Tuple.first boardSize
                     , SvgAttr.height <| flip (++) "px" <| String.fromInt <| Tuple.second boardSize
@@ -213,8 +227,8 @@ view ({ sourcePlane, rects, drawnRect } as model) =
             ]
 
 
-viewRect : SourcePlane -> Camera -> Rect -> SvgStyled.Svg msg
-viewRect plane camera rect =
+viewRect : SourcePlane -> Camera -> List Css.Style -> Rect -> SvgStyled.Svg msg
+viewRect plane camera css rect =
     let
         vertices =
             rect
@@ -231,12 +245,7 @@ viewRect plane camera rect =
     in
     SvgStyled.path
         [ SvgAttr.d <| SvgPath.toString path
-        , SvgAttr.css
-            [ Css.cursor Css.pointer
-            , Css.hover
-                [ Css.fill <| Css.hex "7da2af"
-                ]
-            ]
+        , SvgAttr.css css
         ]
         []
 
