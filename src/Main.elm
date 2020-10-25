@@ -4,6 +4,7 @@ import Angle exposing (Angle)
 import Axis3d exposing (Axis3d)
 import Basics.Extra exposing (..)
 import Browser
+import Browser.Events
 import Camera3d exposing (Camera3d)
 import Css
 import Direction2d
@@ -13,6 +14,7 @@ import Html.Lazy
 import Html.Styled as Styled
 import Html.Styled.Attributes exposing (css)
 import Json.Decode as Decode exposing (Decoder)
+import Keyboard.Event
 import Length
 import List.Extra
 import Path.LowLevel as SvgPath exposing (DrawTo(..), Mode(..), MoveTo(..))
@@ -65,6 +67,7 @@ type Msg
     | MouseUp
     | MouseMove Float Float
     | Wheel Float Float
+    | CtrlZ
     | NoOp
 
 
@@ -102,7 +105,14 @@ init devicePixelRatio =
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    Sub.none
+    Browser.Events.onKeyDown <|
+        Keyboard.Event.considerKeyboardEvent <|
+            \{ ctrlKey, metaKey, key } ->
+                if (metaKey || ctrlKey) && key == Just "z" then
+                    Just CtrlZ
+
+                else
+                    Nothing
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -153,6 +163,9 @@ update msg model =
                     | azimuth = model.azimuth |> add deltaX
                     , elevation = model.elevation |> add deltaY
                 }
+
+            CtrlZ ->
+                { model | rects = List.drop 1 model.rects }
 
 
 
@@ -431,7 +444,7 @@ withNoCmd =
 
 
 boardSize =
-    ( 1000, 800 )
+    ( 700, 600 )
 
 
 screenRectangle : Rectangle2d Length.Meters ScreenCoordinates
@@ -449,7 +462,7 @@ verticalFieldOfView =
 
 viewDistance : Length.Length
 viewDistance =
-    Length.centimeters 30
+    Length.centimeters 25
 
 
 resolution : Float -> Quantity.Quantity Float (Quantity.Rate Pixels.Pixels Length.Meters)
