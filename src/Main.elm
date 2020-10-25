@@ -181,7 +181,7 @@ view ({ sourcePlane, rects, drawnRect } as model) =
         rectHoverCss =
             [ Css.cursor Css.pointer
             , Css.hover
-                [ Css.fill <| Css.hex "7da2af"
+                [ Css.fill theme.lighter
                 ]
             ]
 
@@ -199,8 +199,8 @@ view ({ sourcePlane, rects, drawnRect } as model) =
                 , Css.padding <| Css.px 0
                 , Css.border <| Css.px 4
                 , Css.borderStyle <| Css.solid
-                , Css.borderColor <| Css.hex "732e43"
-                , Css.fill <| Css.hex "5a6e75"
+                , Css.borderColor theme.accent
+                , Css.fill theme.light
                 ]
             ]
             [ rects
@@ -218,8 +218,8 @@ view ({ sourcePlane, rects, drawnRect } as model) =
                 [ css
                     [ Css.display Css.block
                     , Css.padding <| Css.px 8
-                    , Css.backgroundColor <| Css.hex "732e43"
-                    , Css.color <| Css.hex "13151f"
+                    , Css.backgroundColor theme.accent
+                    , Css.color theme.dark
                     , Css.fontFamilies [ "Fira Code", "monospace" ]
                     ]
                 ]
@@ -458,6 +458,14 @@ withNoCmd =
 
 
 -- CONSTANTS
+
+
+theme =
+    { dark = Css.hex "13151f"
+    , light = Css.hex "5a6e75"
+    , lighter = Css.hex "7da2af"
+    , accent = Css.hex "732e43"
+    }
 
 
 boardSize =
