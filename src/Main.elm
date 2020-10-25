@@ -147,15 +147,12 @@ update msg model =
 
             Wheel deltaX deltaY ->
                 let
-                    offsetAngleX =
-                        Angle.degrees <| negate <| deltaX * wheelCoefficient
+                    add delta =
+                        Angle.inDegrees >> (+) (delta * wheelCoefficient) >> Angle.degrees
                 in
                 { model
-                    | azimuth =
-                        model.azimuth
-                            |> Angle.inDegrees
-                            |> (+) (deltaY * wheelCoefficient)
-                            |> Angle.degrees
+                    | azimuth = model.azimuth |> add deltaX
+                    , elevation = model.elevation |> add (deltaY * -1)
                 }
 
 
