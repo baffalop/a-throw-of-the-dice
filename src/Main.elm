@@ -1,7 +1,7 @@
 module Main exposing (..)
 
 import Angle
-import Axis3d
+import Axis3d exposing (Axis3d)
 import Basics.Extra exposing (..)
 import Browser
 import Css exposing (..)
@@ -17,7 +17,7 @@ import List.Extra
 import Path.LowLevel as SvgPath exposing (DrawTo(..), Mode(..), MoveTo(..))
 import Pixels
 import Point2d exposing (Point2d)
-import Point3d
+import Point3d exposing (Point3d)
 import Quantity
 import Rectangle2d exposing (Rectangle2d)
 import Rectangle3d
@@ -44,6 +44,7 @@ main =
 type alias Model =
     { rects : List Rect
     , sourcePlane : SourcePlane
+    , focus : Point3d Length.Meters World
     , viewPlane : ViewPlane
     , drawnRect : Maybe DrawnRect
     , devicePixelRatio : Float
@@ -72,6 +73,15 @@ init devicePixelRatio =
 
         yEdge =
             Tuple.second boardSize |> (*) (18 / 800)
+
+        focusX =
+            Tuple.first boardSize |> (*) (13.2 / 1000)
+
+        focusY =
+            Tuple.second boardSize |> (*) (21 / 800)
+
+        focus =
+            Point3d.centimeters focusX focusY 0
     in
     { rects =
         [ ( 2, 2, 3 )
@@ -81,10 +91,11 @@ init devicePixelRatio =
         ]
             |> List.map rectByNumbers
     , sourcePlane = SketchPlane3d.xy
+    , focus = focus
     , viewPlane =
         SketchPlane3d.xy
             |> SketchPlane3d.offsetBy (Length.meters -3)
-            |> SketchPlane3d.rotateAround tiltAxis (Angle.degrees 20)
+            |> SketchPlane3d.rotateAround (focusAxis Axis3d.x focus) (Angle.degrees 20)
     , drawnRect = Nothing
     , devicePixelRatio = devicePixelRatio
     }
@@ -146,7 +157,7 @@ update msg model =
                 { model
                     | sourcePlane =
                         model.sourcePlane
-                            |> SketchPlane3d.rotateAround turnAxis offsetAngleY
+                            |> SketchPlane3d.rotateAround (focusAxis Axis3d.y model.focus) offsetAngleY
                 }
 
 
@@ -357,6 +368,12 @@ rectByNumbers ( x, y, length ) =
     rectFrom (Point2d.centimeters x y) (Point2d.centimeters (x + length) 0)
 
 
+focusAxis : Axis3d Length.Meters World -> Point3d Length.Meters World -> Axis3d Length.Meters World
+focusAxis baseAxis =
+    Vector3d.from Point3d.origin
+        >> flip Axis3d.translateBy baseAxis
+
+
 
 -- HELPERS
 
@@ -405,24 +422,6 @@ withNoCmd =
 
 boardSize =
     ( 1000, 800 )
-
-
-tiltAxis =
-    let
-        y =
-            Tuple.second boardSize |> (*) (21 / 800)
-    in
-    Axis3d.x
-        |> Axis3d.translateBy (Vector3d.centimeters 0 y 0)
-
-
-turnAxis =
-    let
-        x =
-            Tuple.first boardSize |> (*) (13.2 / 1000)
-    in
-    Axis3d.y
-        |> Axis3d.translateBy (Vector3d.centimeters x 0 0)
 
 
 resolution : Float -> Quantity.Quantity Float (Quantity.Rate Pixels.Pixels Length.Meters)
