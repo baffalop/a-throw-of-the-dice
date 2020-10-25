@@ -27,7 +27,6 @@ import SketchPlane3d exposing (SketchPlane3d)
 import Svg
 import Svg.Attributes as SvgAttr
 import Vector2d exposing (Vector2d)
-import Vector3d
 import Viewpoint3d exposing (Viewpoint3d)
 
 
@@ -82,7 +81,7 @@ init devicePixelRatio =
             Tuple.first boardSize |> (*) (13.2 / 1000)
 
         focusY =
-            Tuple.second boardSize |> (*) (21 / 800)
+            Tuple.second boardSize |> (*) (10 / 800)
     in
     { rects =
         [ ( 2, 2, 3 )
@@ -381,9 +380,7 @@ makeCamera { focus, azimuth, elevation } =
         , viewpoint =
             Viewpoint3d.orbit
                 { focalPoint = focus
-                , groundPlane =
-                    Vector3d.from Point3d.origin focus
-                        |> flip SketchPlane3d.translateBy SketchPlane3d.xz
+                , groundPlane = SketchPlane3d.xz
                 , azimuth = azimuth
                 , elevation = elevation
                 , distance = viewDistance
@@ -448,19 +445,10 @@ boardSize =
 
 screenRectangle : Rectangle2d Length.Meters ScreenCoordinates
 screenRectangle =
-    let
-        bottomLeft =
-            boardSize
-                |> Tuple.mapBoth Length.cssPixels Length.cssPixels
-                |> uncurry Point2d.xy
-
-        translationVector =
-            Vector2d.xy (Length.meters 0) (Point2d.yCoordinate bottomLeft)
-                |> Vector2d.scaleBy 0.5
-                |> Vector2d.reverse
-    in
-    Rectangle2d.from Point2d.origin bottomLeft
-        |> Rectangle2d.translateBy translationVector
+    boardSize
+        |> Tuple.mapBoth Length.cssPixels Length.cssPixels
+        |> uncurry Point2d.xy
+        |> Rectangle2d.from Point2d.origin
 
 
 verticalFieldOfView : Angle
