@@ -9,10 +9,10 @@ import Camera3d exposing (Camera3d)
 import Css
 import Direction2d
 import Html exposing (Html)
-import Html.Events as Events
 import Html.Lazy
 import Html.Styled as Styled
 import Html.Styled.Attributes exposing (css)
+import Html.Styled.Events as StyledEvents
 import Json.Decode as Decode exposing (Decoder)
 import Keyboard.Event
 import Length
@@ -26,8 +26,8 @@ import Quantity
 import Rectangle2d exposing (Rectangle2d)
 import Rectangle3d
 import SketchPlane3d exposing (SketchPlane3d)
-import Svg
-import Svg.Attributes as SvgAttr
+import Svg.Styled as SvgStyled
+import Svg.Styled.Attributes as SvgAttr
 import Vector2d exposing (Vector2d)
 import Viewpoint3d exposing (Viewpoint3d)
 
@@ -192,15 +192,14 @@ view ({ sourcePlane, rects, drawnRect } as model) =
             ]
             [ includeDrawnRect drawnRect rects
                 |> List.map (viewRect sourcePlane camera)
-                |> Svg.svg
+                |> SvgStyled.svg
                     [ SvgAttr.width <| flip (++) "px" <| String.fromInt <| Tuple.first boardSize
                     , SvgAttr.height <| flip (++) "px" <| String.fromInt <| Tuple.second boardSize
-                    , Events.on "mousedown" <| coordinateDecoder "offset" MouseDown
-                    , Events.on "mousemove" <| coordinateDecoder "offset" MouseMove
-                    , Events.onMouseUp MouseUp
-                    , Events.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
+                    , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
+                    , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
+                    , StyledEvents.onMouseUp MouseUp
+                    , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
                     ]
-                |> Styled.fromUnstyled
             , Styled.div
                 [ css
                     [ Css.display Css.block
@@ -214,7 +213,7 @@ view ({ sourcePlane, rects, drawnRect } as model) =
             ]
 
 
-viewRect : SourcePlane -> Camera -> Rect -> Svg.Svg msg
+viewRect : SourcePlane -> Camera -> Rect -> SvgStyled.Svg msg
 viewRect plane camera rect =
     let
         vertices =
@@ -230,7 +229,16 @@ viewRect plane camera rect =
         path =
             roundCorners cornerRadius vertices
     in
-    Svg.path [ SvgAttr.d <| SvgPath.toString path ] []
+    SvgStyled.path
+        [ SvgAttr.d <| SvgPath.toString path
+        , SvgAttr.css
+            [ Css.cursor Css.pointer
+            , Css.hover
+                [ Css.fill <| Css.hex "7da2af"
+                ]
+            ]
+        ]
+        []
 
 
 
