@@ -4,7 +4,7 @@ import Angle
 import Axis3d exposing (Axis3d)
 import Basics.Extra exposing (..)
 import Browser
-import Css exposing (..)
+import Css
 import Direction2d
 import Html exposing (Html)
 import Html.Events as Events
@@ -170,13 +170,13 @@ view { sourcePlane, viewPlane, rects, drawnRect } =
     Styled.toUnstyled <|
         Styled.div
             [ css
-                [ display inlineBlock
-                , margin <| px 30
-                , padding <| px 0
-                , border <| px 4
-                , borderStyle <| solid
-                , borderColor <| hex "732e43"
-                , fill <| hex "5a6e75"
+                [ Css.display Css.inlineBlock
+                , Css.margin <| Css.px 30
+                , Css.padding <| Css.px 0
+                , Css.border <| Css.px 4
+                , Css.borderStyle <| Css.solid
+                , Css.borderColor <| Css.hex "732e43"
+                , Css.fill <| Css.hex "5a6e75"
                 ]
             ]
             [ includeDrawnRect drawnRect rects
@@ -192,11 +192,11 @@ view { sourcePlane, viewPlane, rects, drawnRect } =
                 |> Styled.fromUnstyled
             , Styled.div
                 [ css
-                    [ display block
-                    , padding <| px 8
-                    , backgroundColor <| hex "732e43"
-                    , color <| hex "13151f"
-                    , fontFamilies [ "Fira Code", "monospace" ]
+                    [ Css.display Css.block
+                    , Css.padding <| Css.px 8
+                    , Css.backgroundColor <| Css.hex "732e43"
+                    , Css.color <| Css.hex "13151f"
+                    , Css.fontFamilies [ "Fira Code", "monospace" ]
                     ]
                 ]
                 [ Styled.text "Draw rectangles. Scroll to spin." ]
