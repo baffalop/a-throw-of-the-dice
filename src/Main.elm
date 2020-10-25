@@ -89,6 +89,7 @@ init devicePixelRatio =
         , ( 2, yEdge, 3 )
         , ( xEdge, yEdge, 3 )
         , ( xEdge, 2, 3 )
+        , ( focusX, focusY, 1 )
         ]
             |> List.map rectByNumbers
     , sourcePlane = SketchPlane3d.xy
