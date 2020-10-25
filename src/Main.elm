@@ -362,7 +362,7 @@ rectFrom : SourcePoint -> SourcePoint -> Rect
 rectFrom originPoint endPoint =
     let
         halfHeight =
-            Vector2d.centimeters 0 0.7
+            Vector2d.centimeters 0 0.5
 
         length =
             Vector2d.from originPoint endPoint
@@ -487,7 +487,7 @@ verticalFieldOfView =
 
 viewDistance : Length.Length
 viewDistance =
-    Length.centimeters 25
+    Length.centimeters 20
 
 
 resolution : Float -> Quantity.Quantity Float (Quantity.Rate Pixels.Pixels Length.Meters)
