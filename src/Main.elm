@@ -86,13 +86,7 @@ init devicePixelRatio =
         focusY =
             Tuple.second boardSize |> (*) (10 / 800)
     in
-    { rects =
-        [ ( 2, 2, 3 )
-        , ( 2, yEdge, 3 )
-        , ( xEdge, yEdge, 3 )
-        , ( xEdge, 2, 3 )
-        ]
-            |> List.map rectByNumbers
+    { rects = []
     , sourcePlane = SketchPlane3d.xy
     , focus = Point3d.centimeters focusX focusY 0
     , azimuth = Angle.degrees 90
@@ -407,11 +401,6 @@ makeCamera { focus, azimuth, elevation } =
                 , distance = viewDistance
                 }
         }
-
-
-rectByNumbers : ( Float, Float, Float ) -> Rect
-rectByNumbers ( x, y, length ) =
-    rectFrom (Point2d.centimeters x y) (Point2d.centimeters (x + length) 0)
 
 
 
