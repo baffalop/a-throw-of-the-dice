@@ -395,17 +395,17 @@ coordinateDecoder prefix mapper =
 
 mapPairs : (a -> a -> b) -> List a -> List b
 mapPairs f list =
-    List.map2 f list (list |> wrapAround |> List.drop 1)
+    List.map2 f list (list |> List.drop 1 |> wrapAround)
 
 
 wrapAround : List a -> List a
 wrapAround list =
-    case list of
-        [] ->
+    case List.head list of
+        Nothing ->
             []
 
-        x :: xs ->
-            xs ++ [ x ]
+        Just head ->
+            list ++ [ head ]
 
 
 withNoCmd : a -> ( a, Cmd msg )
