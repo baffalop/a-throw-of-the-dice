@@ -151,7 +151,7 @@ update msg model =
                 in
                 { model
                     | azimuth = model.azimuth |> add deltaX
-                    , elevation = model.elevation |> add (deltaY * -1)
+                    , elevation = model.elevation |> add deltaY
                 }
 
 
