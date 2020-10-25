@@ -1,9 +1,10 @@
 module Main exposing (..)
 
-import Angle
+import Angle exposing (Angle)
 import Axis3d exposing (Axis3d)
 import Basics.Extra exposing (..)
 import Browser
+import Camera3d exposing (Camera3d)
 import Css
 import Direction2d
 import Html exposing (Html)
@@ -18,6 +19,7 @@ import Path.LowLevel as SvgPath exposing (DrawTo(..), Mode(..), MoveTo(..))
 import Pixels
 import Point2d exposing (Point2d)
 import Point3d exposing (Point3d)
+import Point3d.Projection
 import Quantity
 import Rectangle2d exposing (Rectangle2d)
 import Rectangle3d
@@ -26,6 +28,7 @@ import Svg
 import Svg.Attributes as SvgAttr
 import Vector2d exposing (Vector2d)
 import Vector3d
+import Viewpoint3d exposing (Viewpoint3d)
 
 
 main =
@@ -45,7 +48,8 @@ type alias Model =
     { rects : List Rect
     , sourcePlane : SourcePlane
     , focus : Point3d Length.Meters World
-    , viewPlane : ViewPlane
+    , azimuth : Angle
+    , elevation : Angle
     , drawnRect : Maybe DrawnRect
     , devicePixelRatio : Float
     }
@@ -79,9 +83,6 @@ init devicePixelRatio =
 
         focusY =
             Tuple.second boardSize |> (*) (21 / 800)
-
-        focus =
-            Point3d.centimeters focusX focusY 0
     in
     { rects =
         [ ( 2, 2, 3 )
@@ -91,11 +92,9 @@ init devicePixelRatio =
         ]
             |> List.map rectByNumbers
     , sourcePlane = SketchPlane3d.xy
-    , focus = focus
-    , viewPlane =
-        SketchPlane3d.xy
-            |> SketchPlane3d.offsetBy (Length.meters -3)
-            |> SketchPlane3d.rotateAround (focusAxis Axis3d.x focus) (Angle.degrees 20)
+    , focus = Point3d.centimeters focusX focusY 0
+    , azimuth = Angle.degrees 90
+    , elevation = Angle.degrees 0
     , drawnRect = Nothing
     , devicePixelRatio = devicePixelRatio
     }
@@ -118,7 +117,7 @@ update msg model =
                 { model
                     | drawnRect =
                         ( x, y )
-                            |> plottedOn model.sourcePlane model.viewPlane model.devicePixelRatio
+                            |> plottedOn model.sourcePlane (makeCamera model) model.devicePixelRatio
                             |> Maybe.map
                                 (\point ->
                                     { originPoint = point
@@ -136,7 +135,7 @@ update msg model =
                         { model
                             | drawnRect =
                                 ( x, y )
-                                    |> plottedOn model.sourcePlane model.viewPlane model.devicePixelRatio
+                                    |> plottedOn model.sourcePlane (makeCamera model) model.devicePixelRatio
                                     |> Maybe.map (\endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
                         }
 
@@ -150,14 +149,13 @@ update msg model =
                 let
                     offsetAngleX =
                         Angle.degrees <| negate <| deltaX * wheelCoefficient
-
-                    offsetAngleY =
-                        Angle.degrees <| deltaY * wheelCoefficient
                 in
                 { model
-                    | sourcePlane =
-                        model.sourcePlane
-                            |> SketchPlane3d.rotateAround (focusAxis Axis3d.y model.focus) offsetAngleY
+                    | azimuth =
+                        model.azimuth
+                            |> Angle.inDegrees
+                            |> (+) (deltaY * wheelCoefficient)
+                            |> Angle.degrees
                 }
 
 
@@ -166,7 +164,11 @@ update msg model =
 
 
 view : Model -> Html Msg
-view { sourcePlane, viewPlane, rects, drawnRect } =
+view ({ sourcePlane, rects, drawnRect } as model) =
+    let
+        camera =
+            makeCamera model
+    in
     Styled.toUnstyled <|
         Styled.div
             [ css
@@ -180,7 +182,7 @@ view { sourcePlane, viewPlane, rects, drawnRect } =
                 ]
             ]
             [ includeDrawnRect drawnRect rects
-                |> List.map (viewRect sourcePlane viewPlane)
+                |> List.map (viewRect sourcePlane camera)
                 |> Svg.svg
                     [ SvgAttr.width <| flip (++) "px" <| String.fromInt <| Tuple.first boardSize
                     , SvgAttr.height <| flip (++) "px" <| String.fromInt <| Tuple.second boardSize
@@ -203,14 +205,14 @@ view { sourcePlane, viewPlane, rects, drawnRect } =
             ]
 
 
-viewRect : SourcePlane -> ViewPlane -> Rect -> Svg.Svg msg
-viewRect plane viewPlane rect =
+viewRect : SourcePlane -> Camera -> Rect -> Svg.Svg msg
+viewRect plane camera rect =
     let
         vertices =
             rect
                 |> Rectangle3d.on plane
                 |> Rectangle3d.vertices
-                |> List.map (Point3d.projectInto viewPlane)
+                |> List.map (projectPoint camera)
                 |> wrapAround
 
         cornerRadius =
@@ -226,7 +228,7 @@ viewRect plane viewPlane rect =
 -- SVG
 
 
-roundCorners : Length.Length -> List ViewPoint -> List SvgPath.SubPath
+roundCorners : Length.Length -> List ScreenPoint -> List SvgPath.SubPath
 roundCorners radius points =
     let
         path =
@@ -256,7 +258,7 @@ roundCorners radius points =
         |> Maybe.withDefault []
 
 
-roundedCorner : Length.Length -> ViewPoint -> ViewPoint -> List DrawTo
+roundedCorner : Length.Length -> ScreenPoint -> ScreenPoint -> List DrawTo
 roundedCorner radius a b =
     let
         midpoint =
@@ -284,7 +286,7 @@ roundedCorner radius a b =
         ]
 
 
-svgCoord : ViewPoint -> ( Float, Float )
+svgCoord : ScreenPoint -> ( Float, Float )
 svgCoord =
     Point2d.toRecord Length.inCssPixels
         >> (\{ x, y } -> ( x, y ))
@@ -298,16 +300,12 @@ type alias SourcePlane =
     SketchPlane3d Length.Meters World { defines : SourceCoordinates }
 
 
-type alias ViewPlane =
-    SketchPlane3d Length.Meters World { defines : ViewCoordinates }
-
-
 type SourceCoordinates
     = SourceCoordinates
 
 
-type ViewCoordinates
-    = ViewCoordinates
+type ScreenCoordinates
+    = ScreenCoordinates
 
 
 type World
@@ -318,8 +316,16 @@ type alias SourcePoint =
     Point2d Length.Meters SourceCoordinates
 
 
-type alias ViewPoint =
-    Point2d Length.Meters ViewCoordinates
+type alias WorldPoint =
+    Point3d Length.Meters World
+
+
+type alias ScreenPoint =
+    Point2d Length.Meters ScreenCoordinates
+
+
+type alias Camera =
+    Camera3d Length.Meters World
 
 
 type alias Rect =
@@ -348,30 +354,45 @@ rectFrom originPoint endPoint =
     Rectangle2d.from topLeft bottomRight
 
 
-plottedOn : SourcePlane -> ViewPlane -> Float -> ( Float, Float ) -> Maybe SourcePoint
-plottedOn sourcePlane viewPlane pixelRatio ( x, y ) =
+plottedOn : SourcePlane -> Camera -> Float -> ( Float, Float ) -> Maybe SourcePoint
+plottedOn sourcePlane camera pixelRatio ( x, y ) =
     let
         translationVector =
             Point2d.pixels x y
                 |> Point2d.at_ (resolution pixelRatio)
-                |> Point3d.on viewPlane
-                |> Vector3d.from (SketchPlane3d.originPoint viewPlane)
+                |> Debug.todo "raycasting"
     in
-    SketchPlane3d.normalAxis viewPlane
+    Debug.todo "raycasting"
         |> Axis3d.translateBy translationVector
         |> Axis3d.intersectionWithPlane (SketchPlane3d.toPlane sourcePlane)
         |> Maybe.map (Point3d.projectInto sourcePlane)
 
 
+projectPoint : Camera -> WorldPoint -> ScreenPoint
+projectPoint camera =
+    Point3d.Projection.toScreenSpace camera screenRectangle
+
+
+makeCamera : { a | focus : WorldPoint, azimuth : Angle, elevation : Angle } -> Camera
+makeCamera { focus, azimuth, elevation } =
+    Camera3d.perspective
+        { verticalFieldOfView = Angle.degrees 50
+        , viewpoint =
+            Viewpoint3d.orbit
+                { focalPoint = focus
+                , groundPlane =
+                    Vector3d.from Point3d.origin focus
+                        |> flip SketchPlane3d.translateBy SketchPlane3d.xz
+                , azimuth = azimuth
+                , elevation = elevation
+                , distance = Length.centimeters 20
+                }
+        }
+
+
 rectByNumbers : ( Float, Float, Float ) -> Rect
 rectByNumbers ( x, y, length ) =
     rectFrom (Point2d.centimeters x y) (Point2d.centimeters (x + length) 0)
-
-
-focusAxis : Axis3d Length.Meters World -> Point3d Length.Meters World -> Axis3d Length.Meters World
-focusAxis baseAxis =
-    Vector3d.from Point3d.origin
-        >> flip Axis3d.translateBy baseAxis
 
 
 
@@ -422,6 +443,23 @@ withNoCmd =
 
 boardSize =
     ( 1000, 800 )
+
+
+screenRectangle : Rectangle2d Length.Meters ScreenCoordinates
+screenRectangle =
+    let
+        bottomLeft =
+            boardSize
+                |> Tuple.mapBoth Length.cssPixels Length.cssPixels
+                |> uncurry Point2d.xy
+
+        translationVector =
+            Vector2d.xy (Length.meters 0) (Point2d.yCoordinate bottomLeft)
+                |> Vector2d.scaleBy 0.5
+                |> Vector2d.reverse
+    in
+    Rectangle2d.from Point2d.origin bottomLeft
+        |> Rectangle2d.translateBy translationVector
 
 
 resolution : Float -> Quantity.Quantity Float (Quantity.Rate Pixels.Pixels Length.Meters)
