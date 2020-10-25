@@ -376,7 +376,7 @@ projectPoint camera =
 makeCamera : { a | focus : WorldPoint, azimuth : Angle, elevation : Angle } -> Camera
 makeCamera { focus, azimuth, elevation } =
     Camera3d.perspective
-        { verticalFieldOfView = Angle.degrees 50
+        { verticalFieldOfView = verticalFieldOfView
         , viewpoint =
             Viewpoint3d.orbit
                 { focalPoint = focus
@@ -385,7 +385,7 @@ makeCamera { focus, azimuth, elevation } =
                         |> flip SketchPlane3d.translateBy SketchPlane3d.xz
                 , azimuth = azimuth
                 , elevation = elevation
-                , distance = Length.centimeters 20
+                , distance = viewDistance
                 }
         }
 
@@ -460,6 +460,16 @@ screenRectangle =
     in
     Rectangle2d.from Point2d.origin bottomLeft
         |> Rectangle2d.translateBy translationVector
+
+
+verticalFieldOfView : Angle
+verticalFieldOfView =
+    Angle.degrees 50
+
+
+viewDistance : Length.Length
+viewDistance =
+    Length.centimeters 30
 
 
 resolution : Float -> Quantity.Quantity Float (Quantity.Rate Pixels.Pixels Length.Meters)
