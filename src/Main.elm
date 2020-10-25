@@ -117,7 +117,7 @@ update msg model =
                 { model
                     | drawnRect =
                         ( x, y )
-                            |> plottedOn model.sourcePlane (makeCamera model) model.devicePixelRatio
+                            |> raycastTo model.sourcePlane (makeCamera model) model.devicePixelRatio
                             |> Maybe.map
                                 (\point ->
                                     { originPoint = point
@@ -135,7 +135,7 @@ update msg model =
                         { model
                             | drawnRect =
                                 ( x, y )
-                                    |> plottedOn model.sourcePlane (makeCamera model) model.devicePixelRatio
+                                    |> raycastTo model.sourcePlane (makeCamera model) model.devicePixelRatio
                                     |> Maybe.map (\endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
                         }
 
@@ -351,16 +351,11 @@ rectFrom originPoint endPoint =
     Rectangle2d.from topLeft bottomRight
 
 
-plottedOn : SourcePlane -> Camera -> Float -> ( Float, Float ) -> Maybe SourcePoint
-plottedOn sourcePlane camera pixelRatio ( x, y ) =
-    let
-        translationVector =
-            Point2d.pixels x y
-                |> Point2d.at_ (resolution pixelRatio)
-                |> Debug.todo "raycasting"
-    in
-    Debug.todo "raycasting"
-        |> Axis3d.translateBy translationVector
+raycastTo : SourcePlane -> Camera -> Float -> ( Float, Float ) -> Maybe SourcePoint
+raycastTo sourcePlane camera pixelRatio ( x, y ) =
+    Point2d.pixels x y
+        |> Point2d.at_ (resolution pixelRatio)
+        |> Camera3d.ray camera screenRectangle
         |> Axis3d.intersectionWithPlane (SketchPlane3d.toPlane sourcePlane)
         |> Maybe.map (Point3d.projectInto sourcePlane)
 
