@@ -108,7 +108,7 @@ init devicePixelRatio =
 subscriptions : Model -> Sub Msg
 subscriptions { transition } =
     Sub.batch
-        [ subCtrlZ CtrlZ
+        [ onCtrlZ CtrlZ
         , case transition of
             Nothing ->
                 Sub.none
@@ -118,8 +118,8 @@ subscriptions { transition } =
         ]
 
 
-subCtrlZ : msg -> Sub msg
-subCtrlZ msg =
+onCtrlZ : msg -> Sub msg
+onCtrlZ msg =
     Browser.Events.onKeyDown <|
         Keyboard.Event.considerKeyboardEvent <|
             \{ ctrlKey, metaKey, key } ->
