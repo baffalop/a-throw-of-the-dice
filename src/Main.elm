@@ -260,7 +260,7 @@ roundCorners radius points =
     let
         path =
             points
-                |> mapPairs (roundedCorner radius)
+                |> mapPairs (roundedCornerSegments radius)
                 |> List.concat
 
         endCoords =
@@ -285,8 +285,8 @@ roundCorners radius points =
         |> Maybe.withDefault []
 
 
-roundedCorner : Length.Length -> ScreenPoint -> ScreenPoint -> List DrawTo
-roundedCorner radius a b =
+roundedCornerSegments : Length.Length -> ScreenPoint -> ScreenPoint -> List DrawTo
+roundedCornerSegments radius a b =
     let
         midpoint =
             Point2d.interpolateFrom a b 0.5
