@@ -272,7 +272,7 @@ view ({ sourcePlane, rects, drawnRect } as model) =
                     , Css.fontFamilies [ "Fira Code", "monospace" ]
                     ]
                 ]
-                [ Styled.text "Draw rectangles. Scroll to spin. Ctrl+Z to undo." ]
+                [ Styled.text "Draw rectangles. Scroll to spin. Click a rectangle to go there. Ctrl+Z to undo." ]
             ]
 
 
