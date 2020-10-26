@@ -211,9 +211,7 @@ update msg model =
 
                         else
                             { model
-                                | focus =
-                                    Ease.inOutCubic at
-                                        |> Point3d.interpolateFrom from to
+                                | focus = Point3d.interpolateFrom from to <| Ease.inOutCubic at
                                 , transition = Just { transition | at = at }
                             }
 
