@@ -75,12 +75,6 @@ type Msg
 init : Float -> ( Model, Cmd msg )
 init devicePixelRatio =
     let
-        xEdge =
-            Tuple.first boardSize |> (*) (21.5 / 1000)
-
-        yEdge =
-            Tuple.second boardSize |> (*) (18 / 800)
-
         focusX =
             Tuple.first boardSize |> (*) (13.2 / 1000)
 
