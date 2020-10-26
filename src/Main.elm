@@ -25,7 +25,7 @@ import Point2d exposing (Point2d)
 import Point3d exposing (Point3d)
 import Quantity
 import Rectangle2d exposing (Rectangle2d)
-import Rectangle3d
+import Rectangle3d exposing (Rectangle3d)
 import SketchPlane3d exposing (SketchPlane3d)
 import Svg.Styled as SvgStyled
 import Svg.Styled.Attributes as SvgAttr
@@ -235,7 +235,7 @@ view ({ sourcePlane, rects, drawnRect } as model) =
 
         maybeAppendDrawnRect =
             drawnRect
-                |> Maybe.andThen (viewRect sourcePlane camera Inert << .rect)
+                |> Maybe.andThen (.rect >> Rectangle3d.on sourcePlane >> viewRect camera Inert)
                 |> Maybe.map (::)
                 |> Maybe.withDefault identity
     in
@@ -252,7 +252,7 @@ view ({ sourcePlane, rects, drawnRect } as model) =
                 ]
             ]
             [ rects
-                |> List.filterMap (viewRect sourcePlane camera Focusable)
+                |> List.filterMap (Rectangle3d.on sourcePlane >> viewRect camera Focusable)
                 |> maybeAppendDrawnRect
                 |> SvgStyled.svg
                     [ SvgAttr.width <| flip (++) "px" <| String.fromInt <| Tuple.first boardSize
@@ -275,19 +275,15 @@ view ({ sourcePlane, rects, drawnRect } as model) =
             ]
 
 
-viewRect : SourcePlane -> Camera -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
-viewRect plane camera behaviour rect =
-    let
-        rect3d =
-            rect |> Rectangle3d.on plane
-    in
-    if rect3d |> Rectangle3d.vertices |> areAllInFontOf camera then
+viewRect : Camera -> SvgBehaviour -> Rectangle3d Length.Meters World -> Maybe (SvgStyled.Svg Msg)
+viewRect camera behaviour rect =
+    if rect |> Rectangle3d.vertices |> areAllInFontOf camera then
         let
             cornerRadius =
                 Length.centimeters 0.2
 
             path =
-                rect3d
+                rect
                     |> Rectangle3d.edges
                     |> List.map (projectEdge camera)
                     |> roundCorners cornerRadius
@@ -295,7 +291,7 @@ viewRect plane camera behaviour rect =
             attributes =
                 case behaviour of
                     Focusable ->
-                        [ Svg.Styled.Events.onClick <| ClickedTo <| Rectangle3d.centerPoint rect3d
+                        [ Svg.Styled.Events.onClick <| ClickedTo <| Rectangle3d.centerPoint rect
                         , Svg.Styled.Events.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
                         , Svg.Styled.Events.stopPropagationOn "mouseup" <| Decode.succeed ( NoOp, True )
                         , SvgAttr.css
