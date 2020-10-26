@@ -29,6 +29,7 @@ import Rectangle3d
 import SketchPlane3d exposing (SketchPlane3d)
 import Svg.Styled as SvgStyled
 import Svg.Styled.Attributes as SvgAttr
+import Svg.Styled.Events
 import Vector2d exposing (Vector2d)
 import Viewpoint3d exposing (Viewpoint3d)
 
@@ -49,7 +50,8 @@ main =
 type alias Model =
     { rects : List Rect
     , sourcePlane : SourcePlane
-    , focus : Point3d Length.Meters World
+    , focus : WorldPoint
+    , transition : Maybe Transition
     , azimuth : Angle
     , elevation : Angle
     , drawnRect : Maybe DrawnRect
@@ -63,11 +65,20 @@ type alias DrawnRect =
     }
 
 
+type alias Transition =
+    { from : WorldPoint
+    , to : WorldPoint
+    , at : Float
+    }
+
+
 type Msg
     = MouseDown Float Float
     | MouseUp
     | MouseMove Float Float
     | Wheel Float Float
+    | ClickedTo WorldPoint
+    | AnimationTick Float
     | CtrlZ
     | NoOp
 
@@ -84,6 +95,7 @@ init devicePixelRatio =
     { rects = []
     , sourcePlane = SketchPlane3d.xy
     , focus = Point3d.centimeters focusX focusY 0
+    , transition = Nothing
     , azimuth = Angle.degrees 90
     , elevation = Angle.degrees 0
     , drawnRect = Nothing
@@ -93,12 +105,25 @@ init devicePixelRatio =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
+subscriptions { transition } =
+    Sub.batch
+        [ subCtrlZ CtrlZ
+        , case transition of
+            Nothing ->
+                Sub.none
+
+            Just _ ->
+                Browser.Events.onAnimationFrameDelta AnimationTick
+        ]
+
+
+subCtrlZ : msg -> Sub msg
+subCtrlZ msg =
     Browser.Events.onKeyDown <|
         Keyboard.Event.considerKeyboardEvent <|
             \{ ctrlKey, metaKey, key } ->
                 if (metaKey || ctrlKey) && key == Just "z" then
-                    Just CtrlZ
+                    Just msg
 
                 else
                     Nothing
@@ -153,6 +178,42 @@ update msg model =
                     , elevation = model.elevation |> add deltaY
                 }
 
+            ClickedTo newFocus ->
+                if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
+                    model
+
+                else
+                    { model
+                        | transition =
+                            Just
+                                { from = model.focus
+                                , to = newFocus
+                                , at = 0
+                                }
+                    }
+
+            AnimationTick delta ->
+                case model.transition of
+                    Nothing ->
+                        model
+
+                    Just transition ->
+                        let
+                            at =
+                                transition.at + (delta / 500)
+                        in
+                        if at >= 1 then
+                            { model
+                                | focus = transition.to
+                                , transition = Nothing
+                            }
+
+                        else
+                            { model
+                                | focus = Point3d.interpolateFrom transition.from transition.to at
+                                , transition = Just { transition | at = at }
+                            }
+
             CtrlZ ->
                 { model | rects = List.drop 1 model.rects }
 
@@ -161,22 +222,20 @@ update msg model =
 -- VIEW
 
 
+type SvgBehaviour
+    = Focusable
+    | Inert
+
+
 view : Model -> Html Msg
 view ({ sourcePlane, rects, drawnRect } as model) =
     let
         camera =
             makeCamera model
 
-        rectHoverCss =
-            [ Css.cursor Css.pointer
-            , Css.hover
-                [ Css.fill theme.lighter
-                ]
-            ]
-
         maybeAppendDrawnRect =
             drawnRect
-                |> Maybe.andThen (viewRect sourcePlane camera [] << .rect)
+                |> Maybe.andThen (viewRect sourcePlane camera Inert << .rect)
                 |> Maybe.map (::)
                 |> Maybe.withDefault identity
     in
@@ -193,7 +252,7 @@ view ({ sourcePlane, rects, drawnRect } as model) =
                 ]
             ]
             [ rects
-                |> List.filterMap (viewRect sourcePlane camera rectHoverCss)
+                |> List.filterMap (viewRect sourcePlane camera Focusable)
                 |> maybeAppendDrawnRect
                 |> SvgStyled.svg
                     [ SvgAttr.width <| flip (++) "px" <| String.fromInt <| Tuple.first boardSize
@@ -216,8 +275,8 @@ view ({ sourcePlane, rects, drawnRect } as model) =
             ]
 
 
-viewRect : SourcePlane -> Camera -> List Css.Style -> Rect -> Maybe (SvgStyled.Svg msg)
-viewRect plane camera css rect =
+viewRect : SourcePlane -> Camera -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
+viewRect plane camera behaviour rect =
     let
         rect3d =
             rect |> Rectangle3d.on plane
@@ -232,12 +291,27 @@ viewRect plane camera css rect =
                     |> Rectangle3d.edges
                     |> List.map (projectEdge camera)
                     |> roundCorners cornerRadius
+
+            attributes =
+                case behaviour of
+                    Focusable ->
+                        [ Svg.Styled.Events.onClick <| ClickedTo <| Rectangle3d.centerPoint rect3d
+                        , Svg.Styled.Events.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
+                        , Svg.Styled.Events.stopPropagationOn "mouseup" <| Decode.succeed ( NoOp, True )
+                        , SvgAttr.css
+                            [ Css.cursor Css.pointer
+                            , Css.hover
+                                [ Css.fill theme.lighter
+                                ]
+                            ]
+                        ]
+
+                    Inert ->
+                        []
         in
         Just <|
             SvgStyled.path
-                [ SvgAttr.d <| SvgPath.toString path
-                , SvgAttr.css css
-                ]
+                (SvgAttr.d (SvgPath.toString path) :: attributes)
                 []
 
     else
