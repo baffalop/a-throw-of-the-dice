@@ -201,7 +201,7 @@ update msg model =
                     Just ({ from, to } as transition) ->
                         let
                             at =
-                                transition.at + (delta / 800)
+                                transition.at + (delta / 900)
                         in
                         if at >= 1 then
                             { model
