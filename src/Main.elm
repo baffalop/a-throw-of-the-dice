@@ -231,16 +231,14 @@ viewRect plane camera css rect =
     in
     if vertices |> areAllInFontOf camera then
         let
-            projectedVertices =
-                vertices
-                    |> List.map (projectPoint camera)
-                    |> wrapAround
-
             cornerRadius =
                 Length.centimeters 0.2
 
             path =
-                roundCorners cornerRadius projectedVertices
+                vertices
+                    |> List.map (projectPoint camera)
+                    |> wrapAround
+                    |> roundCorners cornerRadius
         in
         Just <|
             SvgStyled.path
