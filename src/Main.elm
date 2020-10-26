@@ -198,14 +198,14 @@ update msg model =
                     Nothing ->
                         model
 
-                    Just transition ->
+                    Just ({ from, to } as transition) ->
                         let
                             at =
                                 transition.at + (delta / 800)
                         in
                         if at >= 1 then
                             { model
-                                | focus = transition.to
+                                | focus = to
                                 , transition = Nothing
                             }
 
@@ -213,7 +213,7 @@ update msg model =
                             { model
                                 | focus =
                                     Ease.inOutCubic at
-                                        |> Point3d.interpolateFrom transition.from transition.to
+                                        |> Point3d.interpolateFrom from to
                                 , transition = Just { transition | at = at }
                             }
 
