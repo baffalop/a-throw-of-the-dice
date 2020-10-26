@@ -260,7 +260,7 @@ roundCorners radius points =
     let
         path =
             points
-                |> mapPairs (roundedCornerSegments radius)
+                |> mapConsecutive (roundedCornerSegments radius)
                 |> List.concat
 
         endCoords =
@@ -442,8 +442,8 @@ coordinateDecoder prefix mapper =
         (Decode.field (prefix ++ "Y") <| Decode.float)
 
 
-mapPairs : (a -> a -> b) -> List a -> List b
-mapPairs f list =
+mapConsecutive : (a -> a -> b) -> List a -> List b
+mapConsecutive f list =
     List.map2 f list (list |> List.drop 1 |> wrapAround)
 
 
