@@ -7,7 +7,6 @@ import Browser
 import Browser.Events
 import Camera3d exposing (Camera3d)
 import Css
-import Direction2d
 import Html exposing (Html)
 import Html.Lazy
 import Html.Styled as Styled
@@ -16,12 +15,14 @@ import Html.Styled.Events as StyledEvents
 import Json.Decode as Decode exposing (Decoder)
 import Keyboard.Event
 import Length
+import LineSegment2d exposing (LineSegment2d)
+import LineSegment3d exposing (LineSegment3d)
+import LineSegment3d.Projection
 import List.Extra
 import Path.LowLevel as SvgPath exposing (DrawTo(..), Mode(..), MoveTo(..))
 import Pixels
 import Point2d exposing (Point2d)
 import Point3d exposing (Point3d)
-import Point3d.Projection
 import Quantity
 import Rectangle2d exposing (Rectangle2d)
 import Rectangle3d
@@ -224,20 +225,18 @@ view ({ sourcePlane, rects, drawnRect } as model) =
 viewRect : SourcePlane -> Camera -> List Css.Style -> Rect -> Maybe (SvgStyled.Svg msg)
 viewRect plane camera css rect =
     let
-        vertices =
-            rect
-                |> Rectangle3d.on plane
-                |> Rectangle3d.vertices
+        rect3d =
+            rect |> Rectangle3d.on plane
     in
-    if vertices |> areAllInFontOf camera then
+    if rect3d |> Rectangle3d.vertices |> areAllInFontOf camera then
         let
             cornerRadius =
                 Length.centimeters 0.2
 
             path =
-                vertices
-                    |> List.map (projectPoint camera)
-                    |> wrapAround
+                rect3d
+                    |> Rectangle3d.edges
+                    |> List.map (projectEdge camera)
                     |> roundCorners cornerRadius
         in
         Just <|
@@ -255,13 +254,11 @@ viewRect plane camera css rect =
 -- SVG
 
 
-roundCorners : Length.Length -> List ScreenPoint -> List SvgPath.SubPath
-roundCorners radius points =
+roundCorners : Length.Length -> List ScreenEdge -> List SvgPath.SubPath
+roundCorners radius edges =
     let
         path =
-            points
-                |> mapConsecutive (roundedCornerSegments radius)
-                |> List.concat
+            List.concatMap (roundedCornerSegments radius) edges
 
         endCoords =
             case List.Extra.last path of
@@ -285,20 +282,23 @@ roundCorners radius points =
         |> Maybe.withDefault []
 
 
-roundedCornerSegments : Length.Length -> ScreenPoint -> ScreenPoint -> List DrawTo
-roundedCornerSegments radius a b =
+roundedCornerSegments : Length.Length -> ScreenEdge -> List DrawTo
+roundedCornerSegments radius edge =
     let
-        midpoint =
-            Point2d.interpolateFrom a b 0.5
+        diameter =
+            radius |> Quantity.multiplyBy 2
+
+        ( a, b ) =
+            LineSegment2d.endpoints edge
     in
-    if Point2d.distanceFrom midpoint b |> Quantity.lessThan radius then
-        [ QuadraticBezierCurveTo Absolute [ ( svgCoord a, svgCoord midpoint ) ]
+    if LineSegment2d.length edge |> Quantity.lessThan diameter then
+        [ QuadraticBezierCurveTo Absolute [ ( svgCoord a, svgCoord <| LineSegment2d.midpoint edge ) ]
         ]
 
     else
         let
             radiusVector =
-                Direction2d.from a b
+                LineSegment2d.direction edge
                     |> Maybe.map (Vector2d.withLength radius)
                     |> Maybe.withDefault Vector2d.zero
 
@@ -347,6 +347,14 @@ type alias WorldPoint =
     Point3d Length.Meters World
 
 
+type alias WorldEdge =
+    LineSegment3d Length.Meters World
+
+
+type alias ScreenEdge =
+    LineSegment2d Length.Meters ScreenCoordinates
+
+
 type alias ScreenPoint =
     Point2d Length.Meters ScreenCoordinates
 
@@ -390,9 +398,9 @@ raycastTo sourcePlane camera pixelRatio ( x, y ) =
         |> Maybe.map (Point3d.projectInto sourcePlane)
 
 
-projectPoint : Camera -> WorldPoint -> ScreenPoint
-projectPoint camera =
-    Point3d.Projection.toScreenSpace camera screenRectangle
+projectEdge : Camera -> WorldEdge -> ScreenEdge
+projectEdge camera =
+    LineSegment3d.Projection.toScreenSpace camera screenRectangle
 
 
 areAllInFontOf : Camera -> List WorldPoint -> Bool
@@ -440,21 +448,6 @@ coordinateDecoder prefix mapper =
         mapper
         (Decode.field (prefix ++ "X") <| Decode.float)
         (Decode.field (prefix ++ "Y") <| Decode.float)
-
-
-mapConsecutive : (a -> a -> b) -> List a -> List b
-mapConsecutive f list =
-    List.map2 f list (list |> List.drop 1 |> wrapAround)
-
-
-wrapAround : List a -> List a
-wrapAround list =
-    case List.head list of
-        Nothing ->
-            []
-
-        Just head ->
-            list ++ [ head ]
 
 
 withNoCmd : a -> ( a, Cmd msg )
