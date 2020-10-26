@@ -181,7 +181,7 @@ view ({ sourcePlane, rects, drawnRect } as model) =
 
         maybeAppendDrawnRect =
             drawnRect
-                |> Maybe.map (viewRect sourcePlane camera [] << .rect)
+                |> Maybe.andThen (viewRect sourcePlane camera [] << .rect)
                 |> Maybe.map (::)
                 |> Maybe.withDefault identity
     in
@@ -198,7 +198,7 @@ view ({ sourcePlane, rects, drawnRect } as model) =
                 ]
             ]
             [ rects
-                |> List.map (viewRect sourcePlane camera rectHoverCss)
+                |> List.filterMap (viewRect sourcePlane camera rectHoverCss)
                 |> maybeAppendDrawnRect
                 |> SvgStyled.svg
                     [ SvgAttr.width <| flip (++) "px" <| String.fromInt <| Tuple.first boardSize
@@ -221,27 +221,36 @@ view ({ sourcePlane, rects, drawnRect } as model) =
             ]
 
 
-viewRect : SourcePlane -> Camera -> List Css.Style -> Rect -> SvgStyled.Svg msg
+viewRect : SourcePlane -> Camera -> List Css.Style -> Rect -> Maybe (SvgStyled.Svg msg)
 viewRect plane camera css rect =
     let
         vertices =
             rect
                 |> Rectangle3d.on plane
                 |> Rectangle3d.vertices
-                |> List.map (projectPoint camera)
-                |> wrapAround
-
-        cornerRadius =
-            Length.centimeters 0.2
-
-        path =
-            roundCorners cornerRadius vertices
     in
-    SvgStyled.path
-        [ SvgAttr.d <| SvgPath.toString path
-        , SvgAttr.css css
-        ]
-        []
+    if vertices |> areAllInFontOf camera then
+        let
+            projectedVertices =
+                vertices
+                    |> List.map (projectPoint camera)
+                    |> wrapAround
+
+            cornerRadius =
+                Length.centimeters 0.2
+
+            path =
+                roundCorners cornerRadius projectedVertices
+        in
+        Just <|
+            SvgStyled.path
+                [ SvgAttr.d <| SvgPath.toString path
+                , SvgAttr.css css
+                ]
+                []
+
+    else
+        Nothing
 
 
 
@@ -386,6 +395,18 @@ raycastTo sourcePlane camera pixelRatio ( x, y ) =
 projectPoint : Camera -> WorldPoint -> ScreenPoint
 projectPoint camera =
     Point3d.Projection.toScreenSpace camera screenRectangle
+
+
+areAllInFontOf : Camera -> List WorldPoint -> Bool
+areAllInFontOf camera =
+    (camera
+        |> Camera3d.viewpoint
+        |> Viewpoint3d.viewPlane
+        |> SketchPlane3d.normalAxis
+        |> Point3d.signedDistanceAlong
+    )
+        >> Quantity.lessThan (Length.meters 0)
+        |> List.all
 
 
 makeCamera : { a | focus : WorldPoint, azimuth : Angle, elevation : Angle } -> Camera
