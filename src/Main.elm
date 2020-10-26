@@ -398,15 +398,13 @@ projectPoint camera =
 
 
 areAllInFontOf : Camera -> List WorldPoint -> Bool
-areAllInFontOf camera =
-    (camera
-        |> Camera3d.viewpoint
-        |> Viewpoint3d.viewPlane
-        |> SketchPlane3d.normalAxis
-        |> Point3d.signedDistanceAlong
-    )
-        >> Quantity.lessThan (Length.meters 0)
-        |> List.all
+areAllInFontOf =
+    Camera3d.viewpoint
+        >> Viewpoint3d.viewPlane
+        >> SketchPlane3d.normalAxis
+        >> Point3d.signedDistanceAlong
+        >> (<<) (Quantity.lessThan (Length.meters 0))
+        >> List.all
 
 
 makeCamera : { a | focus : WorldPoint, azimuth : Angle, elevation : Angle } -> Camera
