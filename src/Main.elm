@@ -7,6 +7,7 @@ import Browser
 import Browser.Events
 import Camera3d exposing (Camera3d)
 import Css
+import Ease
 import Html exposing (Html)
 import Html.Lazy
 import Html.Styled as Styled
@@ -200,7 +201,7 @@ update msg model =
                     Just transition ->
                         let
                             at =
-                                transition.at + (delta / 500)
+                                transition.at + (delta / 800)
                         in
                         if at >= 1 then
                             { model
@@ -210,7 +211,9 @@ update msg model =
 
                         else
                             { model
-                                | focus = Point3d.interpolateFrom transition.from transition.to at
+                                | focus =
+                                    Ease.inOutCubic at
+                                        |> Point3d.interpolateFrom transition.from transition.to
                                 , transition = Just { transition | at = at }
                             }
 
