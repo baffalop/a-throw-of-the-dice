@@ -278,7 +278,7 @@ view ({ sourcePlane, rects, drawnRect } as model) =
 
 viewRect : Camera -> SvgBehaviour -> Rectangle3d Length.Meters World -> Maybe (SvgStyled.Svg Msg)
 viewRect camera behaviour rect =
-    if rect |> Rectangle3d.vertices |> areAllInFontOf camera then
+    if Rectangle3d.vertices rect |> List.all (inFontOf camera) then
         let
             cornerRadius =
                 Length.centimeters 0.2
@@ -468,14 +468,13 @@ projectEdge camera =
     LineSegment3d.Projection.toScreenSpace camera screenRectangle
 
 
-areAllInFontOf : Camera -> List WorldPoint -> Bool
-areAllInFontOf =
+inFontOf : Camera -> WorldPoint -> Bool
+inFontOf =
     Camera3d.viewpoint
         >> Viewpoint3d.viewPlane
         >> SketchPlane3d.normalAxis
         >> Point3d.signedDistanceAlong
         >> (<<) (Quantity.lessThan (Length.meters 0))
-        >> List.all
 
 
 makeCamera : { a | focus : WorldPoint, azimuth : Angle, elevation : Angle } -> Camera
