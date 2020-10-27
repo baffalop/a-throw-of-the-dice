@@ -244,7 +244,7 @@ view ({ sourcePlane, rects, drawnRect } as model) =
     Styled.toUnstyled <|
         Styled.div
             [ css
-                [ Css.display Css.inlineBlock
+                [ Css.width <| Css.px <| Tuple.first boardSize
                 , Css.margin <| Css.px 30
                 , Css.padding <| Css.px 0
                 , Css.border <| Css.px 4
