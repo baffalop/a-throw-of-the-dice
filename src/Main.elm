@@ -319,7 +319,7 @@ viewRect camera behaviour rect =
 -- SVG
 
 
-roundCorners : Length.Length -> List ScreenEdge -> List SvgPath.SubPath
+roundCorners : Length.Length -> List ScreenLine -> List SvgPath.SubPath
 roundCorners radius edges =
     let
         path =
@@ -347,7 +347,7 @@ roundCorners radius edges =
         |> Maybe.withDefault []
 
 
-roundedCornerSegments : Length.Length -> ScreenEdge -> List DrawTo
+roundedCornerSegments : Length.Length -> ScreenLine -> List DrawTo
 roundedCornerSegments radius edge =
     let
         diameter =
@@ -412,11 +412,11 @@ type alias WorldPoint =
     Point3d Length.Meters World
 
 
-type alias WorldEdge =
+type alias WorldLine =
     LineSegment3d Length.Meters World
 
 
-type alias ScreenEdge =
+type alias ScreenLine =
     LineSegment2d Length.Meters ScreenCoordinates
 
 
@@ -463,7 +463,7 @@ raycastTo sourcePlane camera pixelRatio ( x, y ) =
         |> Maybe.map (Point3d.projectInto sourcePlane)
 
 
-projectEdge : Camera -> WorldEdge -> ScreenEdge
+projectEdge : Camera -> WorldLine -> ScreenLine
 projectEdge camera =
     LineSegment3d.Projection.toScreenSpace camera screenRectangle
 
