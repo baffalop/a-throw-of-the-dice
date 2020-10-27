@@ -273,7 +273,13 @@ view ({ sourcePlane, rects, drawnRect } as model) =
                     , Css.fontFamilies [ "Fira Code", "monospace" ]
                     ]
                 ]
-                [ Styled.text "Draw rectangles. Scroll to spin. Click a rectangle to go there. Ctrl+Z to undo." ]
+                [ nonBreakingTexts
+                    [ "Draw rectangles."
+                    , "Scroll to spin."
+                    , "Click a rectangle to go there."
+                    , "Ctrl+Z to undo."
+                    ]
+                ]
             ]
 
 
@@ -314,6 +320,17 @@ viewRect camera behaviour rect =
 
     else
         Nothing
+
+
+nonBreakingTexts : List String -> Styled.Html msg
+nonBreakingTexts =
+    let
+        nbsp =
+            Char.fromCode 0xA0 |> String.fromChar
+    in
+    List.map (String.replace " " nbsp)
+        >> String.join " "
+        >> Styled.text
 
 
 
