@@ -7,6 +7,7 @@ import Browser
 import Browser.Events
 import Camera3d exposing (Camera3d)
 import Css
+import Duration exposing (Duration)
 import Ease
 import Html exposing (Html)
 import Html.Lazy
@@ -201,7 +202,7 @@ update msg model =
                     Just ({ from, to } as transition) ->
                         let
                             at =
-                                transition.at + (delta / 900)
+                                transition.at + (delta / Duration.inMilliseconds transitionDuration)
                         in
                         if at >= 1 then
                             { model
@@ -535,6 +536,29 @@ boardSize =
     ( 700, 600 )
 
 
+verticalFieldOfView : Angle
+verticalFieldOfView =
+    Angle.degrees 50
+
+
+transitionDuration : Duration
+transitionDuration =
+    Duration.milliseconds 900
+
+
+viewDistance : Length.Length
+viewDistance =
+    Length.centimeters 20
+
+
+wheelCoefficient =
+    0.3
+
+
+
+-- DERIVED
+
+
 screenRectangle : Rectangle2d Length.Meters ScreenCoordinates
 screenRectangle =
     boardSize
@@ -543,22 +567,8 @@ screenRectangle =
         |> Rectangle2d.from Point2d.origin
 
 
-verticalFieldOfView : Angle
-verticalFieldOfView =
-    Angle.degrees 50
-
-
-viewDistance : Length.Length
-viewDistance =
-    Length.centimeters 20
-
-
 resolution : Float -> Quantity.Quantity Float (Quantity.Rate Pixels.Pixels Length.Meters)
 resolution ratio =
     (48 * ratio)
         |> Pixels.pixels
         |> Quantity.per (Length.inches 1)
-
-
-wheelCoefficient =
-    0.3
