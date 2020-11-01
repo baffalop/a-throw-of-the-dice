@@ -583,7 +583,7 @@ transitionDuration =
 
 viewDistance : Length.Length
 viewDistance =
-    Length.centimeters 20
+    Length.centimeters 30
 
 
 wheelCoefficient =
