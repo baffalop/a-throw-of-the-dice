@@ -10,10 +10,10 @@ import Css
 import Duration exposing (Duration)
 import Ease
 import Html exposing (Html)
-import Html.Lazy
 import Html.Styled as Styled
 import Html.Styled.Attributes exposing (css)
 import Html.Styled.Events as StyledEvents
+import Html.Styled.Lazy
 import Json.Decode as Decode exposing (Decoder)
 import Keyboard.Event
 import Length
@@ -42,7 +42,7 @@ main =
         , view =
             \model ->
                 { title = "A wee playabout"
-                , body = Html.Lazy.lazy view model |> List.singleton
+                , body = view model
                 }
         , update = update
         , subscriptions = subscriptions
@@ -234,8 +234,33 @@ type SvgBehaviour
     | Inert
 
 
-view : Model -> Html Msg
-view ({ sourcePlane, rects, drawnRect } as model) =
+view : Model -> List (Html Msg)
+view model =
+    List.map Styled.toUnstyled <|
+        [ Styled.div
+            [ css
+                [ Css.position Css.absolute
+                , Css.top <| Css.px 40
+                , Css.right <| Css.px 40
+                , Css.padding <| Css.px 8
+                , Css.backgroundColor theme.accent
+                , Css.color theme.dark
+                , Css.fontFamilies [ "Fira Code", "monospace" ]
+                ]
+            ]
+            [ nonBreakingTexts
+                [ "Draw rectangles."
+                , "Scroll to spin."
+                , "Click a rectangle to go there."
+                , "Ctrl+Z to undo."
+                ]
+            ]
+        , Html.Styled.Lazy.lazy viewRects model
+        ]
+
+
+viewRects : Model -> Styled.Html Msg
+viewRects ({ sourcePlane, rects, drawnRect } as model) =
     let
         ( screenWidth, screenHeight ) =
             model.screenDimensions
@@ -249,44 +274,19 @@ view ({ sourcePlane, rects, drawnRect } as model) =
                 |> Maybe.map (::)
                 |> Maybe.withDefault identity
     in
-    Styled.toUnstyled <|
-        Styled.div
-            [ css
-                [ Css.width <| Css.px <| toFloat screenWidth
-                , Css.margin <| Css.px 30
-                , Css.padding <| Css.px 0
-                , Css.border <| Css.px 4
-                , Css.borderStyle <| Css.solid
-                , Css.borderColor theme.accent
-                , Css.fill theme.light
-                ]
-            ]
-            [ rects
-                |> List.filterMap (Rectangle3d.on sourcePlane >> viewRect camera Focusable)
-                |> maybeAppendDrawnRect
-                |> SvgStyled.svg
-                    [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
-                    , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
-                    , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
-                    , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
-                    , StyledEvents.onMouseUp MouseUp
-                    , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
-                    ]
-            , Styled.div
-                [ css
-                    [ Css.display Css.block
-                    , Css.padding <| Css.px 8
-                    , Css.backgroundColor theme.accent
-                    , Css.color theme.dark
-                    , Css.fontFamilies [ "Fira Code", "monospace" ]
-                    ]
-                ]
-                [ nonBreakingTexts
-                    [ "Draw rectangles."
-                    , "Scroll to spin."
-                    , "Click a rectangle to go there."
-                    , "Ctrl+Z to undo."
-                    ]
+    rects
+        |> List.filterMap (Rectangle3d.on sourcePlane >> viewRect camera Focusable)
+        |> maybeAppendDrawnRect
+        |> SvgStyled.svg
+            [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
+            , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
+            , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
+            , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
+            , StyledEvents.onMouseUp MouseUp
+            , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
+            , SvgAttr.css
+                [ Css.fill theme.light
+                , Css.margin <| Css.px 0
                 ]
             ]
 
