@@ -86,11 +86,11 @@ type Msg
     | NoOp
 
 
-init : Float -> ( Model, Cmd msg )
-init devicePixelRatio =
+init : { devicePixelRatio : Float, screenDimensions : ( Int, Int ) } -> ( Model, Cmd msg )
+init { devicePixelRatio, screenDimensions } =
     let
         ( screenWidth, screenHeight ) =
-            ( 700, 600 )
+            screenDimensions
 
         focusX =
             toFloat screenWidth * (13.2 / 1000)
@@ -105,7 +105,7 @@ init devicePixelRatio =
     , azimuth = Angle.degrees 90
     , elevation = Angle.degrees 0
     , drawnRect = Nothing
-    , screenDimensions = ( screenWidth, screenHeight )
+    , screenDimensions = screenDimensions
     , devicePixelRatio = devicePixelRatio
     }
         |> withNoCmd
