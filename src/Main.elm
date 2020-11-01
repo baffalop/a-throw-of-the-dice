@@ -82,6 +82,7 @@ type Msg
     | Wheel Float Float
     | ClickedTo WorldPoint
     | AnimationTick Float
+    | WindowResize Int Int
     | CtrlZ
     | NoOp
 
@@ -115,6 +116,7 @@ subscriptions : Model -> Sub Msg
 subscriptions { transition } =
     Sub.batch
         [ onCtrlZ CtrlZ
+        , Browser.Events.onResize WindowResize
         , case transition of
             Nothing ->
                 Sub.none
@@ -220,6 +222,9 @@ update msg model =
                                 | focus = Point3d.interpolateFrom from to <| Ease.inOutCubic at
                                 , transition = Just { transition | at = at }
                             }
+
+            WindowResize width height ->
+                { model | screenDimensions = ( width, height ) }
 
             CtrlZ ->
                 { model | rects = List.drop 1 model.rects }
