@@ -57,6 +57,7 @@ type alias Model =
     , azimuth : Angle
     , elevation : Angle
     , drawnRect : Maybe DrawnRect
+    , screenDimensions : ( Int, Int )
     , devicePixelRatio : Float
     }
 
@@ -88,11 +89,14 @@ type Msg
 init : Float -> ( Model, Cmd msg )
 init devicePixelRatio =
     let
+        ( screenWidth, screenHeight ) =
+            ( 700, 600 )
+
         focusX =
-            Tuple.first boardSize |> (*) (13.2 / 1000)
+            toFloat screenWidth * (13.2 / 1000)
 
         focusY =
-            Tuple.second boardSize |> (*) (10 / 800)
+            toFloat screenHeight * (10 / 800)
     in
     { rects = []
     , sourcePlane = SketchPlane3d.xy
@@ -101,6 +105,7 @@ init devicePixelRatio =
     , azimuth = Angle.degrees 90
     , elevation = Angle.degrees 0
     , drawnRect = Nothing
+    , screenDimensions = ( screenWidth, screenHeight )
     , devicePixelRatio = devicePixelRatio
     }
         |> withNoCmd
@@ -142,7 +147,7 @@ update msg model =
                 { model
                     | drawnRect =
                         ( x, y )
-                            |> raycastTo model.sourcePlane (makeCamera model) model.devicePixelRatio
+                            |> raycastTo model.sourcePlane (makeCameraGeometry model) model.devicePixelRatio
                             |> Maybe.map
                                 (\point ->
                                     { originPoint = point
@@ -160,7 +165,7 @@ update msg model =
                         { model
                             | drawnRect =
                                 ( x, y )
-                                    |> raycastTo model.sourcePlane (makeCamera model) model.devicePixelRatio
+                                    |> raycastTo model.sourcePlane (makeCameraGeometry model) model.devicePixelRatio
                                     |> Maybe.map (\endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
                         }
 
@@ -232,8 +237,11 @@ type SvgBehaviour
 view : Model -> Html Msg
 view ({ sourcePlane, rects, drawnRect } as model) =
     let
+        ( screenWidth, screenHeight ) =
+            model.screenDimensions
+
         camera =
-            makeCamera model
+            makeCameraGeometry model
 
         maybeAppendDrawnRect =
             drawnRect
@@ -244,7 +252,7 @@ view ({ sourcePlane, rects, drawnRect } as model) =
     Styled.toUnstyled <|
         Styled.div
             [ css
-                [ Css.width <| Css.px <| Tuple.first boardSize
+                [ Css.width <| Css.px <| toFloat screenWidth
                 , Css.margin <| Css.px 30
                 , Css.padding <| Css.px 0
                 , Css.border <| Css.px 4
@@ -257,8 +265,8 @@ view ({ sourcePlane, rects, drawnRect } as model) =
                 |> List.filterMap (Rectangle3d.on sourcePlane >> viewRect camera Focusable)
                 |> maybeAppendDrawnRect
                 |> SvgStyled.svg
-                    [ SvgAttr.width <| flip (++) "px" <| String.fromInt <| Tuple.first boardSize
-                    , SvgAttr.height <| flip (++) "px" <| String.fromInt <| Tuple.second boardSize
+                    [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
+                    , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
                     , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
                     , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
                     , StyledEvents.onMouseUp MouseUp
@@ -283,9 +291,9 @@ view ({ sourcePlane, rects, drawnRect } as model) =
             ]
 
 
-viewRect : Camera -> SvgBehaviour -> Rectangle3d Length.Meters World -> Maybe (SvgStyled.Svg Msg)
-viewRect camera behaviour rect =
-    if Rectangle3d.vertices rect |> List.all (inFontOf camera) then
+viewRect : CameraGeometry -> SvgBehaviour -> Rectangle3d Length.Meters World -> Maybe (SvgStyled.Svg Msg)
+viewRect cameraGeometry behaviour rect =
+    if Rectangle3d.vertices rect |> List.all (inFontOf cameraGeometry.camera) then
         let
             cornerRadius =
                 Length.centimeters 0.2
@@ -293,7 +301,7 @@ viewRect camera behaviour rect =
             path =
                 rect
                     |> Rectangle3d.edges
-                    |> List.map (projectEdge camera)
+                    |> List.map (projectEdge cameraGeometry)
                     |> roundCorners cornerRadius
 
             attributes =
@@ -446,6 +454,12 @@ type alias Camera =
     Camera3d Length.Meters World
 
 
+type alias CameraGeometry =
+    { camera : Camera
+    , screenRect : Rectangle2d Length.Meters ScreenCoordinates
+    }
+
+
 type alias Rect =
     Rectangle2d Length.Meters SourceCoordinates
 
@@ -472,18 +486,18 @@ rectFrom originPoint endPoint =
     Rectangle2d.from topLeft bottomRight
 
 
-raycastTo : SourcePlane -> Camera -> Float -> ( Float, Float ) -> Maybe SourcePoint
-raycastTo sourcePlane camera pixelRatio ( x, y ) =
+raycastTo : SourcePlane -> CameraGeometry -> Float -> ( Float, Float ) -> Maybe SourcePoint
+raycastTo sourcePlane { camera, screenRect } pixelRatio ( x, y ) =
     Point2d.pixels x y
         |> Point2d.at_ (resolution pixelRatio)
-        |> Camera3d.ray camera screenRectangle
+        |> Camera3d.ray camera screenRect
         |> Axis3d.intersectionWithPlane (SketchPlane3d.toPlane sourcePlane)
         |> Maybe.map (Point3d.projectInto sourcePlane)
 
 
-projectEdge : Camera -> WorldLine -> ScreenLine
-projectEdge camera =
-    LineSegment3d.Projection.toScreenSpace camera screenRectangle
+projectEdge : CameraGeometry -> WorldLine -> ScreenLine
+projectEdge { camera, screenRect } =
+    LineSegment3d.Projection.toScreenSpace camera screenRect
 
 
 inFontOf : Camera -> WorldPoint -> Bool
@@ -495,19 +509,22 @@ inFontOf =
         >> (<<) (Quantity.lessThan (Length.meters 0))
 
 
-makeCamera : { a | focus : WorldPoint, azimuth : Angle, elevation : Angle } -> Camera
-makeCamera { focus, azimuth, elevation } =
-    Camera3d.perspective
-        { verticalFieldOfView = verticalFieldOfView
-        , viewpoint =
-            Viewpoint3d.orbit
-                { focalPoint = focus
-                , groundPlane = SketchPlane3d.xz
-                , azimuth = azimuth
-                , elevation = elevation
-                , distance = viewDistance
-                }
-        }
+makeCameraGeometry : { a | focus : WorldPoint, azimuth : Angle, elevation : Angle, screenDimensions : ( Int, Int ) } -> CameraGeometry
+makeCameraGeometry { focus, azimuth, elevation, screenDimensions } =
+    { camera =
+        Camera3d.perspective
+            { verticalFieldOfView = verticalFieldOfView
+            , viewpoint =
+                Viewpoint3d.orbit
+                    { focalPoint = focus
+                    , groundPlane = SketchPlane3d.xz
+                    , azimuth = azimuth
+                    , elevation = elevation
+                    , distance = viewDistance
+                    }
+            }
+    , screenRect = makeScreenRectangle screenDimensions
+    }
 
 
 
@@ -549,10 +566,6 @@ theme =
     }
 
 
-boardSize =
-    ( 700, 600 )
-
-
 verticalFieldOfView : Angle
 verticalFieldOfView =
     Angle.degrees 50
@@ -576,12 +589,11 @@ wheelCoefficient =
 -- DERIVED
 
 
-screenRectangle : Rectangle2d Length.Meters ScreenCoordinates
-screenRectangle =
-    boardSize
-        |> Tuple.mapBoth Length.cssPixels Length.cssPixels
-        |> uncurry Point2d.xy
-        |> Rectangle2d.from Point2d.origin
+makeScreenRectangle : ( Int, Int ) -> Rectangle2d Length.Meters ScreenCoordinates
+makeScreenRectangle =
+    Tuple.mapBoth (toFloat >> Length.cssPixels) (toFloat >> Length.cssPixels)
+        >> uncurry Point2d.xy
+        >> Rectangle2d.from Point2d.origin
 
 
 resolution : Float -> Quantity.Quantity Float (Quantity.Rate Pixels.Pixels Length.Meters)
