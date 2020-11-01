@@ -245,6 +245,7 @@ view model =
         [ Styled.div
             [ css
                 [ Css.position Css.absolute
+                , Css.maxWidth <| Css.px 460
                 , Css.top <| Css.px 40
                 , Css.right <| Css.px 40
                 , Css.padding <| Css.px 8
