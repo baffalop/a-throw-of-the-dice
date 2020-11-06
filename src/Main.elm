@@ -617,8 +617,8 @@ withNoCmd =
 
 theme =
     { dark = Css.hex "13151f"
-    , light = Css.hex "5a6e75"
-    , lighter = Css.hex "7da2af"
+    , light = Css.rgba 90 110 117 0.6
+    , lighter = Css.rgba 125 162 175 0.6
     , accent = Css.hex "732e43"
     }
 
