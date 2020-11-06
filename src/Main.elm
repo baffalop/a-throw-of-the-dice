@@ -64,7 +64,7 @@ type alias Model =
 
 type alias DrawnRect =
     { originPoint : SourcePoint
-    , rect : Rect
+    , rect : PlaneRect
     }
 
 
@@ -200,7 +200,10 @@ update msg model =
             MouseUp ->
                 { model
                     | drawnRect = Nothing
-                    , rects = includeDrawnRect model.drawnRect model.rects
+                    , rects =
+                        model.drawnRect
+                            |> Maybe.map (.rect >> Rectangle3d.on model.sourcePlane >> flip (::) model.rects)
+                            |> Maybe.withDefault model.rects
                 }
 
             Wheel deltaX deltaY ->
@@ -320,7 +323,7 @@ viewRects ({ sourcePlane, rects, drawnRect } as model) =
                 |> Maybe.withDefault identity
     in
     rects
-        |> List.filterMap (Rectangle3d.on sourcePlane >> viewRect camera Focusable)
+        |> List.filterMap (viewRect camera Focusable)
         |> maybeAppendDrawnRect
         |> SvgStyled.svg
             [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
@@ -336,7 +339,7 @@ viewRects ({ sourcePlane, rects, drawnRect } as model) =
             ]
 
 
-viewRect : CameraGeometry -> SvgBehaviour -> Rectangle3d Length.Meters World -> Maybe (SvgStyled.Svg Msg)
+viewRect : CameraGeometry -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
 viewRect cameraGeometry behaviour rect =
     if Rectangle3d.vertices rect |> List.all (inFontOf cameraGeometry.camera) then
         let
@@ -506,10 +509,14 @@ type alias CameraGeometry =
 
 
 type alias Rect =
+    Rectangle3d Length.Meters World
+
+
+type alias PlaneRect =
     Rectangle2d Length.Meters SourceCoordinates
 
 
-rectFrom : SourcePoint -> SourcePoint -> Rect
+rectFrom : SourcePoint -> SourcePoint -> PlaneRect
 rectFrom originPoint endPoint =
     let
         halfHeight =
@@ -574,16 +581,6 @@ makeCameraGeometry { focus, azimuth, elevation, screenDimensions } =
 
 
 -- HELPERS
-
-
-includeDrawnRect : Maybe DrawnRect -> List Rect -> List Rect
-includeDrawnRect newRect rects =
-    case newRect of
-        Nothing ->
-            rects
-
-        Just { rect } ->
-            rect :: rects
 
 
 coordinateDecoder : String -> (Float -> Float -> msg) -> Decoder msg
