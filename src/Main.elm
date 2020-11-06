@@ -33,6 +33,7 @@ import Svg.Styled as SvgStyled
 import Svg.Styled.Attributes as SvgAttr
 import Svg.Styled.Events
 import Vector2d exposing (Vector2d)
+import Vector3d
 import Viewpoint3d exposing (Viewpoint3d)
 
 
@@ -221,14 +222,7 @@ update msg model =
                     model
 
                 else
-                    { model
-                        | transition =
-                            Just
-                                { from = model.focus
-                                , to = newFocus
-                                , at = 0
-                                }
-                    }
+                    model |> transitionFocusTo newFocus
 
             AnimationTick delta ->
                 case model.transition of
@@ -257,19 +251,40 @@ update msg model =
 
             ArrowKeyPressed key ->
                 let
-                    _ =
-                        Debug.log "key pressed" <|
-                            case key of
-                                Left ->
-                                    "left"
+                    zOffset =
+                        planeSpacing
+                            |> Quantity.multiplyBy
+                                (case key of
+                                    Left ->
+                                        1
 
-                                Right ->
-                                    "right"
+                                    Right ->
+                                        -1
+                                )
+
+                    zVector =
+                        Vector3d.xyz zeroMeters zeroMeters zOffset
+
+                    newFocus =
+                        model.focus |> Point3d.translateBy zVector
                 in
-                model
+                { model | sourcePlane = model.sourcePlane |> SketchPlane3d.translateBy zVector }
+                    |> transitionFocusTo newFocus
 
             CtrlZ ->
                 { model | rects = List.drop 1 model.rects }
+
+
+transitionFocusTo : WorldPoint -> Model -> Model
+transitionFocusTo focus model =
+    { model
+        | transition =
+            Just
+                { from = model.focus
+                , to = focus
+                , at = 0
+                }
+    }
 
 
 
@@ -623,12 +638,21 @@ viewDistance =
     Length.centimeters 30
 
 
+planeSpacing : Length.Length
+planeSpacing =
+    Length.centimeters 5
+
+
 wheelCoefficient =
     0.3
 
 
 screenMargins =
     10
+
+
+zeroMeters =
+    Length.meters 0
 
 
 
