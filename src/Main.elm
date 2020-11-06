@@ -83,8 +83,14 @@ type Msg
     | ClickedTo WorldPoint
     | AnimationTick Float
     | WindowResize Int Int
+    | ArrowKeyPressed ArrowKey
     | CtrlZ
     | NoOp
+
+
+type ArrowKey
+    = Left
+    | Right
 
 
 init : { devicePixelRatio : Float, screenDimensions : ( Int, Int ) } -> ( Model, Cmd msg )
@@ -115,7 +121,11 @@ init { devicePixelRatio, screenDimensions } =
 subscriptions : Model -> Sub Msg
 subscriptions { transition } =
     Sub.batch
-        [ Browser.Events.onKeyDown <| ctrlZDecoder CtrlZ
+        [ Browser.Events.onKeyDown <|
+            Decode.oneOf
+                [ ctrlZDecoder CtrlZ
+                , arrowKeyDecoder ArrowKeyPressed
+                ]
         , Browser.Events.onResize WindowResize
         , case transition of
             Nothing ->
@@ -135,6 +145,23 @@ ctrlZDecoder msg =
 
             else
                 Nothing
+
+
+arrowKeyDecoder : (ArrowKey -> msg) -> Decoder msg
+arrowKeyDecoder msg =
+    Decode.field "key" Decode.string
+        |> Decode.andThen
+            (\keycode ->
+                case keycode of
+                    "ArrowRight" ->
+                        Decode.succeed <| msg Right
+
+                    "ArrowLeft" ->
+                        Decode.succeed <| msg Left
+
+                    _ ->
+                        Decode.fail "nah"
+            )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -224,6 +251,19 @@ update msg model =
 
             WindowResize width height ->
                 { model | screenDimensions = ( width, height ) }
+
+            ArrowKeyPressed key ->
+                let
+                    _ =
+                        Debug.log "key pressed" <|
+                            case key of
+                                Left ->
+                                    "left"
+
+                                Right ->
+                                    "right"
+                in
+                model
 
             CtrlZ ->
                 { model | rects = List.drop 1 model.rects }
