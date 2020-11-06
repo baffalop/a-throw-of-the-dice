@@ -115,7 +115,7 @@ init { devicePixelRatio, screenDimensions } =
 subscriptions : Model -> Sub Msg
 subscriptions { transition } =
     Sub.batch
-        [ onCtrlZ CtrlZ
+        [ Browser.Events.onKeyDown <| ctrlZDecoder CtrlZ
         , Browser.Events.onResize WindowResize
         , case transition of
             Nothing ->
@@ -126,16 +126,15 @@ subscriptions { transition } =
         ]
 
 
-onCtrlZ : msg -> Sub msg
-onCtrlZ msg =
-    Browser.Events.onKeyDown <|
-        Keyboard.Event.considerKeyboardEvent <|
-            \{ ctrlKey, metaKey, key } ->
-                if (metaKey || ctrlKey) && key == Just "z" then
-                    Just msg
+ctrlZDecoder : msg -> Decoder msg
+ctrlZDecoder msg =
+    Keyboard.Event.considerKeyboardEvent <|
+        \{ ctrlKey, metaKey, key } ->
+            if (metaKey || ctrlKey) && key == Just "z" then
+                Just msg
 
-                else
-                    Nothing
+            else
+                Nothing
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
