@@ -308,7 +308,7 @@ viewRects : Model -> Styled.Html Msg
 viewRects ({ sourcePlane, rects, drawnRect } as model) =
     let
         ( screenWidth, screenHeight ) =
-            model.screenDimensions
+            subtractScreenMargins model.screenDimensions
 
         camera =
             makeCameraGeometry model
@@ -630,6 +630,10 @@ wheelCoefficient =
     0.3
 
 
+screenMargins =
+    10
+
+
 
 -- DERIVED
 
@@ -646,3 +650,7 @@ resolution ratio =
     (48 * ratio)
         |> Pixels.pixels
         |> Quantity.per (Length.inches 1)
+
+
+subtractScreenMargins ( x, y ) =
+    ( x - screenMargins, y - screenMargins )
