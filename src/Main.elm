@@ -11,6 +11,7 @@ import Direction2d
 import Direction3d
 import Duration exposing (Duration)
 import Ease
+import Frame2d
 import Html exposing (Html)
 import Html.Styled as Styled
 import Html.Styled.Attributes exposing (css)
@@ -27,6 +28,7 @@ import Path.LowLevel as SvgPath exposing (DrawTo(..), Mode(..), MoveTo(..))
 import Pixels
 import Point2d exposing (Point2d)
 import Point3d exposing (Point3d)
+import Point3d.Projection
 import Quantity
 import Rectangle2d exposing (Rectangle2d)
 import Rectangle3d exposing (Rectangle3d)
@@ -55,6 +57,7 @@ main =
 
 type alias Model =
     { layers : ZipList Layer
+    , centrePoint : SourcePoint
     , focus : WorldPoint
     , transition : Maybe Transition
     , azimuth : Angle
@@ -108,18 +111,21 @@ init { devicePixelRatio, screenDimensions } =
         ( screenWidth, screenHeight ) =
             screenDimensions
 
-        focusX =
-            toFloat screenWidth * (13.2 / 1000)
+        sourcePlane =
+            SketchPlane3d.xy
 
-        focusY =
-            toFloat screenHeight * (10 / 800)
+        centrePoint =
+            Point2d.centimeters
+                (toFloat screenWidth * (13.2 / 1000))
+                (toFloat screenHeight * (10 / 800))
     in
     { layers =
         ZipList.singleton
-            { plane = SketchPlane3d.xy
+            { plane = sourcePlane
             , rects = []
             }
-    , focus = Point3d.centimeters focusX focusY 0
+    , centrePoint = centrePoint
+    , focus = centrePoint |> Point3d.on sourcePlane
     , transition = Nothing
     , azimuth = Angle.degrees 90
     , elevation = Angle.degrees 0
@@ -425,6 +431,11 @@ viewSvg model =
                 |> Maybe.andThen (.rect >> Rectangle3d.on currentLayer.plane >> viewRect camera Inert currentLayerIndex)
                 |> Maybe.map (::)
                 |> Maybe.withDefault identity
+
+        focusRect =
+            ( Length.centimeters 28, Length.centimeters 20 )
+                |> Rectangle2d.centeredOn (Frame2d.atPoint model.centrePoint)
+                |> Rectangle3d.on currentLayer.plane
     in
     model.layers
         |> ZipList.toList
@@ -432,6 +443,7 @@ viewSvg model =
         |> orderByDepth
         |> List.concat
         |> maybeAppendDrawnRect
+        |> (::) (viewFocusRect camera focusRect)
         |> SvgStyled.svg
             [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
             , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
@@ -489,6 +501,32 @@ viewRect cameraGeometry behaviour layerIndex rect =
 
     else
         Nothing
+
+
+viewFocusRect : CameraGeometry -> Rect -> SvgStyled.Svg msg
+viewFocusRect camera rect =
+    let
+        coords =
+            Rectangle3d.vertices rect
+                |> List.map (projectPoint camera >> svgCoord)
+
+        ( startCoords, remainingCoords ) =
+            List.Extra.uncons coords
+                |> Maybe.withDefault ( ( 0, 0 ), [] )
+
+        path =
+            { moveto = MoveTo Absolute startCoords
+            , drawtos = [ LineTo Absolute (remainingCoords ++ [ startCoords ]) ]
+            }
+    in
+    SvgStyled.path
+        [ SvgAttr.d <| SvgPath.toString [ path ]
+        , SvgAttr.stroke "#328354"
+        , SvgAttr.strokeWidth "2"
+        , SvgAttr.strokeDasharray "8 6"
+        , SvgAttr.fillOpacity "0"
+        ]
+        []
 
 
 nonBreakingTexts : List String -> Styled.Html msg
@@ -667,6 +705,11 @@ raycastTo sourcePlane { camera, screenRect } pixelRatio ( x, y ) =
 projectEdge : CameraGeometry -> WorldLine -> ScreenLine
 projectEdge { camera, screenRect } =
     LineSegment3d.Projection.toScreenSpace camera screenRect
+
+
+projectPoint : CameraGeometry -> WorldPoint -> ScreenPoint
+projectPoint { camera, screenRect } =
+    Point3d.Projection.toScreenSpace camera screenRect
 
 
 inFontOf : Camera -> WorldPoint -> Bool
