@@ -796,9 +796,9 @@ reverse key =
 
 theme =
     { dark = Css.hex "13151f"
-    , light = Css.rgba 90 110 117 0.6
-    , lighter = Css.rgba 125 162 175 0.6
-    , accent = Css.hex "732e43"
+    , light = Css.rgba 139 173 185 0.6
+    , lighter = Css.rgba 179 220 234 0.6
+    , accent = Css.hex "9e3354"
     }
 
 
