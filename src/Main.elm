@@ -35,6 +35,7 @@ import Svg.Styled.Events
 import Vector2d exposing (Vector2d)
 import Vector3d
 import Viewpoint3d exposing (Viewpoint3d)
+import ZipList exposing (ZipList)
 
 
 main =
@@ -51,7 +52,7 @@ main =
 
 
 type alias Model =
-    { layer : Layer
+    { layers : ZipList Layer
     , focus : WorldPoint
     , transition : Maybe Transition
     , azimuth : Angle
@@ -111,10 +112,11 @@ init { devicePixelRatio, screenDimensions } =
         focusY =
             toFloat screenHeight * (10 / 800)
     in
-    { layer =
-        { plane = SketchPlane3d.xy
-        , rects = []
-        }
+    { layers =
+        ZipList.singleton
+            { plane = SketchPlane3d.xy
+            , rects = []
+            }
     , focus = Point3d.centimeters focusX focusY 0
     , transition = Nothing
     , azimuth = Angle.degrees 90
@@ -180,10 +182,14 @@ update msg model =
                 model
 
             MouseDown x y ->
+                let
+                    currentLayer =
+                        ZipList.current model.layers
+                in
                 { model
                     | drawnRect =
                         ( x, y )
-                            |> raycastTo model.layer.plane (makeCameraGeometry model) model.devicePixelRatio
+                            |> raycastTo currentLayer.plane (makeCameraGeometry model) model.devicePixelRatio
                             |> Maybe.map
                                 (\point ->
                                     { originPoint = point
@@ -198,27 +204,33 @@ update msg model =
                         model
 
                     Just rect ->
+                        let
+                            currentLayer =
+                                ZipList.current model.layers
+                        in
                         { model
                             | drawnRect =
                                 ( x, y )
-                                    |> raycastTo model.layer.plane (makeCameraGeometry model) model.devicePixelRatio
+                                    |> raycastTo currentLayer.plane (makeCameraGeometry model) model.devicePixelRatio
                                     |> Maybe.map (\endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
                         }
 
             MouseUp ->
                 let
-                    layer =
-                        model.layer
+                    currentLayer =
+                        ZipList.current model.layers
                 in
                 { model
                     | drawnRect = Nothing
-                    , layer =
-                        { layer
-                            | rects =
-                                model.drawnRect
-                                    |> Maybe.map (.rect >> Rectangle3d.on layer.plane >> flip (::) layer.rects)
-                                    |> Maybe.withDefault layer.rects
-                        }
+                    , layers =
+                        ZipList.replace
+                            { currentLayer
+                                | rects =
+                                    model.drawnRect
+                                        |> Maybe.map (.rect >> Rectangle3d.on currentLayer.plane >> flip (::) currentLayer.rects)
+                                        |> Maybe.withDefault currentLayer.rects
+                            }
+                            model.layers
                 }
 
             Wheel deltaX deltaY ->
@@ -287,10 +299,15 @@ update msg model =
 
             CtrlZ ->
                 let
-                    layer =
-                        model.layer
+                    currentLayer =
+                        ZipList.current model.layers
                 in
-                { model | layer = { layer | rects = List.drop 1 layer.rects } }
+                { model
+                    | layers =
+                        ZipList.replace
+                            { currentLayer | rects = List.drop 1 currentLayer.rects }
+                            model.layers
+                }
 
 
 transitionFocusTo : WorldPoint -> Model -> Model
@@ -349,13 +366,18 @@ viewSvg model =
         camera =
             makeCameraGeometry model
 
+        currentLayer =
+            ZipList.current model.layers
+
         maybeAppendDrawnRect =
             model.drawnRect
-                |> Maybe.andThen (.rect >> Rectangle3d.on model.layer.plane >> viewRect camera Inert)
+                |> Maybe.andThen (.rect >> Rectangle3d.on currentLayer.plane >> viewRect camera Inert)
                 |> Maybe.map (::)
                 |> Maybe.withDefault identity
     in
-    viewLayer model.layer camera
+    model.layers
+        |> ZipList.toList
+        |> List.concatMap (viewLayer camera)
         |> maybeAppendDrawnRect
         |> SvgStyled.svg
             [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
@@ -371,10 +393,10 @@ viewSvg model =
             ]
 
 
-viewLayer : Layer -> CameraGeometry -> List (SvgStyled.Svg Msg)
-viewLayer { rects } cameraGeometry =
+viewLayer : CameraGeometry -> Layer -> List (SvgStyled.Svg Msg)
+viewLayer camera { rects } =
     rects
-        |> List.filterMap (viewRect cameraGeometry Focusable)
+        |> List.filterMap (viewRect camera Focusable)
 
 
 viewRect : CameraGeometry -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
