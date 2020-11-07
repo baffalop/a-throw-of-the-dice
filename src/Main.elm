@@ -51,8 +51,7 @@ main =
 
 
 type alias Model =
-    { rects : List Rect
-    , sourcePlane : SourcePlane
+    { layer : Layer
     , focus : WorldPoint
     , transition : Maybe Transition
     , azimuth : Angle
@@ -60,6 +59,12 @@ type alias Model =
     , drawnRect : Maybe DrawnRect
     , screenDimensions : ( Int, Int )
     , devicePixelRatio : Float
+    }
+
+
+type alias Layer =
+    { plane : SourcePlane
+    , rects : List Rect
     }
 
 
@@ -106,8 +111,10 @@ init { devicePixelRatio, screenDimensions } =
         focusY =
             toFloat screenHeight * (10 / 800)
     in
-    { rects = []
-    , sourcePlane = SketchPlane3d.xy
+    { layer =
+        { plane = SketchPlane3d.xy
+        , rects = []
+        }
     , focus = Point3d.centimeters focusX focusY 0
     , transition = Nothing
     , azimuth = Angle.degrees 90
@@ -176,7 +183,7 @@ update msg model =
                 { model
                     | drawnRect =
                         ( x, y )
-                            |> raycastTo model.sourcePlane (makeCameraGeometry model) model.devicePixelRatio
+                            |> raycastTo model.layer.plane (makeCameraGeometry model) model.devicePixelRatio
                             |> Maybe.map
                                 (\point ->
                                     { originPoint = point
@@ -194,17 +201,24 @@ update msg model =
                         { model
                             | drawnRect =
                                 ( x, y )
-                                    |> raycastTo model.sourcePlane (makeCameraGeometry model) model.devicePixelRatio
+                                    |> raycastTo model.layer.plane (makeCameraGeometry model) model.devicePixelRatio
                                     |> Maybe.map (\endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
                         }
 
             MouseUp ->
+                let
+                    layer =
+                        model.layer
+                in
                 { model
                     | drawnRect = Nothing
-                    , rects =
-                        model.drawnRect
-                            |> Maybe.map (.rect >> Rectangle3d.on model.sourcePlane >> flip (::) model.rects)
-                            |> Maybe.withDefault model.rects
+                    , layer =
+                        { layer
+                            | rects =
+                                model.drawnRect
+                                    |> Maybe.map (.rect >> Rectangle3d.on layer.plane >> flip (::) layer.rects)
+                                    |> Maybe.withDefault layer.rects
+                        }
                 }
 
             Wheel deltaX deltaY ->
@@ -268,11 +282,15 @@ update msg model =
                     newFocus =
                         model.focus |> Point3d.translateBy zVector
                 in
-                { model | sourcePlane = model.sourcePlane |> SketchPlane3d.translateBy zVector }
+                model
                     |> transitionFocusTo newFocus
 
             CtrlZ ->
-                { model | rects = List.drop 1 model.rects }
+                let
+                    layer =
+                        model.layer
+                in
+                { model | layer = { layer | rects = List.drop 1 layer.rects } }
 
 
 transitionFocusTo : WorldPoint -> Model -> Model
@@ -318,12 +336,12 @@ view model =
                 , "Ctrl+Z to undo."
                 ]
             ]
-        , Html.Styled.Lazy.lazy viewRects model
+        , Html.Styled.Lazy.lazy viewSvg model
         ]
 
 
-viewRects : Model -> Styled.Html Msg
-viewRects ({ sourcePlane, rects, drawnRect } as model) =
+viewSvg : Model -> Styled.Html Msg
+viewSvg model =
     let
         ( screenWidth, screenHeight ) =
             subtractScreenMargins model.screenDimensions
@@ -332,13 +350,12 @@ viewRects ({ sourcePlane, rects, drawnRect } as model) =
             makeCameraGeometry model
 
         maybeAppendDrawnRect =
-            drawnRect
-                |> Maybe.andThen (.rect >> Rectangle3d.on sourcePlane >> viewRect camera Inert)
+            model.drawnRect
+                |> Maybe.andThen (.rect >> Rectangle3d.on model.layer.plane >> viewRect camera Inert)
                 |> Maybe.map (::)
                 |> Maybe.withDefault identity
     in
-    rects
-        |> List.filterMap (viewRect camera Focusable)
+    viewLayer model.layer camera
         |> maybeAppendDrawnRect
         |> SvgStyled.svg
             [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
@@ -352,6 +369,12 @@ viewRects ({ sourcePlane, rects, drawnRect } as model) =
                 , Css.margin <| Css.px 0
                 ]
             ]
+
+
+viewLayer : Layer -> CameraGeometry -> List (SvgStyled.Svg Msg)
+viewLayer { rects } cameraGeometry =
+    rects
+        |> List.filterMap (viewRect cameraGeometry Focusable)
 
 
 viewRect : CameraGeometry -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
