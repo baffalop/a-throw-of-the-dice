@@ -296,7 +296,7 @@ update msg model =
                     planesAreFacingRight =
                         ZipList.current model.layers
                             |> .plane
-                            |> isFacingRight (makeViewpoint model)
+                            |> isFacingRightOf (makeViewpoint model)
 
                     direction =
                         if planesAreFacingRight then
@@ -418,6 +418,13 @@ viewSvg model =
         currentLayerIndex =
             ZipList.currentIndex model.layers
 
+        orderByDepth =
+            if currentLayer.plane |> isFacingAwayFrom (Camera3d.viewpoint camera.camera) then
+                List.reverse
+
+            else
+                identity
+
         maybeAppendDrawnRect =
             model.drawnRect
                 |> Maybe.andThen (.rect >> Rectangle3d.on currentLayer.plane >> viewRect camera Inert currentLayerIndex)
@@ -427,6 +434,7 @@ viewSvg model =
     model.layers
         |> ZipList.toList
         |> List.indexedMap (viewLayer camera)
+        |> orderByDepth
         |> List.concat
         |> maybeAppendDrawnRect
         |> SvgStyled.svg
@@ -675,8 +683,14 @@ inFontOf =
         >> (<<) (Quantity.lessThan (Length.meters 0))
 
 
-isFacingRight : Viewpoint -> SourcePlane -> Bool
-isFacingRight viewpoint =
+isFacingAwayFrom : Viewpoint -> SourcePlane -> Bool
+isFacingAwayFrom viewpoint =
+    SketchPlane3d.normalDirection
+        >> Direction3d.equalWithin (Angle.degrees 90) (Viewpoint3d.viewDirection viewpoint)
+
+
+isFacingRightOf : Viewpoint -> SourcePlane -> Bool
+isFacingRightOf viewpoint =
     SketchPlane3d.normalDirection
         >> Direction3d.projectInto (Viewpoint3d.viewPlane viewpoint)
         >> Maybe.map (Direction2d.xComponent >> flip (<) 0)
