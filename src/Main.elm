@@ -7,6 +7,8 @@ import Browser
 import Browser.Events
 import Camera3d exposing (Camera3d)
 import Css
+import Direction2d
+import Direction3d
 import Duration exposing (Duration)
 import Ease
 import Html exposing (Html)
@@ -98,6 +100,11 @@ type Msg
 type ArrowKey
     = Left
     | Right
+
+
+type ZDirection
+    = In
+    | Out
 
 
 init : { devicePixelRatio : Float, screenDimensions : ( Int, Int ) } -> ( Model, Cmd msg )
@@ -286,8 +293,20 @@ update msg model =
 
             ArrowKeyPressed key ->
                 let
+                    planesAreFacingRight =
+                        ZipList.current model.layers
+                            |> .plane
+                            |> isFacingRight (makeViewpoint model)
+
+                    direction =
+                        if planesAreFacingRight then
+                            key
+
+                        else
+                            reverse key
+
                     { multiplier, shift, insert } =
-                        case key of
+                        case direction of
                             Left ->
                                 { multiplier = 1
                                 , shift = ZipList.maybeJumpForward 1
@@ -593,6 +612,10 @@ type alias Camera =
     Camera3d Length.Meters World
 
 
+type alias Viewpoint =
+    Viewpoint3d Length.Meters World
+
+
 type alias CameraGeometry =
     { camera : Camera
     , screenRect : Rectangle2d Length.Meters ScreenCoordinates
@@ -652,22 +675,34 @@ inFontOf =
         >> (<<) (Quantity.lessThan (Length.meters 0))
 
 
+isFacingRight : Viewpoint -> SourcePlane -> Bool
+isFacingRight viewpoint =
+    SketchPlane3d.normalDirection
+        >> Direction3d.projectInto (Viewpoint3d.viewPlane viewpoint)
+        >> Maybe.map (Direction2d.xComponent >> flip (<) 0)
+        >> Maybe.withDefault False
+
+
 makeCameraGeometry : { a | focus : WorldPoint, azimuth : Angle, elevation : Angle, screenDimensions : ( Int, Int ) } -> CameraGeometry
-makeCameraGeometry { focus, azimuth, elevation, screenDimensions } =
+makeCameraGeometry ({ focus, azimuth, elevation, screenDimensions } as model) =
     { camera =
         Camera3d.perspective
             { verticalFieldOfView = verticalFieldOfView
-            , viewpoint =
-                Viewpoint3d.orbit
-                    { focalPoint = focus
-                    , groundPlane = SketchPlane3d.xz
-                    , azimuth = azimuth
-                    , elevation = elevation
-                    , distance = viewDistance
-                    }
+            , viewpoint = makeViewpoint model
             }
     , screenRect = makeScreenRectangle screenDimensions
     }
+
+
+makeViewpoint : { a | focus : WorldPoint, azimuth : Angle, elevation : Angle } -> Viewpoint3d Length.Meters World
+makeViewpoint { focus, azimuth, elevation } =
+    Viewpoint3d.orbit
+        { focalPoint = focus
+        , groundPlane = SketchPlane3d.xz
+        , azimuth = azimuth
+        , elevation = elevation
+        , distance = viewDistance
+        }
 
 
 
@@ -691,6 +726,16 @@ ziplistInsertBefore x ziplist =
 withNoCmd : a -> ( a, Cmd msg )
 withNoCmd =
     flip Tuple.pair Cmd.none
+
+
+reverse : ArrowKey -> ArrowKey
+reverse key =
+    case key of
+        Left ->
+            Right
+
+        Right ->
+            Left
 
 
 
