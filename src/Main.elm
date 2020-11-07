@@ -87,7 +87,7 @@ type Msg
     | MouseUp
     | MouseMove Float Float
     | Wheel Float Float
-    | ClickedTo WorldPoint
+    | ClickedTo Int WorldPoint
     | AnimationTick Float
     | WindowResize Int Int
     | ArrowKeyPressed ArrowKey
@@ -243,12 +243,21 @@ update msg model =
                     , elevation = model.elevation |> add deltaY
                 }
 
-            ClickedTo newFocus ->
+            ClickedTo layerIndex newFocus ->
+                let
+                    withLayerSet =
+                        { model
+                            | layers =
+                                model.layers
+                                    |> ZipList.goToIndex layerIndex
+                                    |> Maybe.withDefault model.layers
+                        }
+                in
                 if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
-                    model
+                    withLayerSet
 
                 else
-                    model |> transitionFocusTo newFocus
+                    withLayerSet |> transitionFocusTo newFocus
 
             AnimationTick delta ->
                 case model.transition of
@@ -386,15 +395,19 @@ viewSvg model =
         currentLayer =
             ZipList.current model.layers
 
+        currentLayerIndex =
+            ZipList.currentIndex model.layers
+
         maybeAppendDrawnRect =
             model.drawnRect
-                |> Maybe.andThen (.rect >> Rectangle3d.on currentLayer.plane >> viewRect camera Inert)
+                |> Maybe.andThen (.rect >> Rectangle3d.on currentLayer.plane >> viewRect camera Inert currentLayerIndex)
                 |> Maybe.map (::)
                 |> Maybe.withDefault identity
     in
     model.layers
         |> ZipList.toList
-        |> List.concatMap (viewLayer camera)
+        |> List.indexedMap (viewLayer camera)
+        |> List.concat
         |> maybeAppendDrawnRect
         |> SvgStyled.svg
             [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
@@ -410,14 +423,14 @@ viewSvg model =
             ]
 
 
-viewLayer : CameraGeometry -> Layer -> List (SvgStyled.Svg Msg)
-viewLayer camera { rects } =
+viewLayer : CameraGeometry -> Int -> Layer -> List (SvgStyled.Svg Msg)
+viewLayer camera index { rects } =
     rects
-        |> List.filterMap (viewRect camera Focusable)
+        |> List.filterMap (viewRect camera Focusable index)
 
 
-viewRect : CameraGeometry -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
-viewRect cameraGeometry behaviour rect =
+viewRect : CameraGeometry -> SvgBehaviour -> Int -> Rect -> Maybe (SvgStyled.Svg Msg)
+viewRect cameraGeometry behaviour layerIndex rect =
     if Rectangle3d.vertices rect |> List.all (inFontOf cameraGeometry.camera) then
         let
             cornerRadius =
@@ -432,7 +445,7 @@ viewRect cameraGeometry behaviour rect =
             attributes =
                 case behaviour of
                     Focusable ->
-                        [ Svg.Styled.Events.onClick <| ClickedTo <| Rectangle3d.centerPoint rect
+                        [ Svg.Styled.Events.onClick <| ClickedTo layerIndex <| Rectangle3d.centerPoint rect
                         , Svg.Styled.Events.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
                         , Svg.Styled.Events.stopPropagationOn "mouseup" <| Decode.succeed ( NoOp, True )
                         , SvgAttr.css
