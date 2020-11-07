@@ -433,7 +433,7 @@ viewSvg model =
                 |> Maybe.withDefault identity
 
         focusRect =
-            ( Length.centimeters 28, Length.centimeters 20 )
+            ( Length.centimeters (toFloat screenWidth * 22 / 1000), Length.centimeters (toFloat screenHeight * 17 / 800) )
                 |> Rectangle2d.centeredOn (Frame2d.atPoint model.centrePoint)
                 |> Rectangle3d.on currentLayer.plane
     in
