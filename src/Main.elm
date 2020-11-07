@@ -375,6 +375,7 @@ view model =
             [ nonBreakingTexts
                 [ "Draw rectangles."
                 , "Scroll to spin."
+                , "Left/right arrows to switch layers."
                 , "Click a rectangle to go there."
                 , "Ctrl+Z to undo."
                 ]
