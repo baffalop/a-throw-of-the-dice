@@ -102,11 +102,6 @@ type ArrowKey
     | Right
 
 
-type ZDirection
-    = In
-    | Out
-
-
 init : { devicePixelRatio : Float, screenDimensions : ( Int, Int ) } -> ( Model, Cmd msg )
 init { devicePixelRatio, screenDimensions } =
     let
