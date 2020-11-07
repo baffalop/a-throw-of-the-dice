@@ -716,12 +716,12 @@ transitionDuration =
 
 viewDistance : Length.Length
 viewDistance =
-    Length.centimeters 30
+    Length.centimeters 25
 
 
 planeSpacing : Length.Length
 planeSpacing =
-    Length.centimeters 5
+    Length.centimeters 7
 
 
 wheelCoefficient =
