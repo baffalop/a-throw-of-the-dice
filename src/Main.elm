@@ -277,24 +277,41 @@ update msg model =
 
             ArrowKeyPressed key ->
                 let
-                    zOffset =
-                        planeSpacing
-                            |> Quantity.multiplyBy
-                                (case key of
-                                    Left ->
-                                        1
+                    { multiplier, shift, insert } =
+                        case key of
+                            Left ->
+                                { multiplier = 1
+                                , shift = ZipList.maybeJumpForward 1
+                                , insert = ZipList.insert
+                                }
 
-                                    Right ->
-                                        -1
-                                )
+                            Right ->
+                                { multiplier = -1
+                                , shift = ZipList.maybeJumpBackward 1
+                                , insert = ziplistInsertBefore
+                                }
 
                     zVector =
-                        Vector3d.xyz zeroMeters zeroMeters zOffset
+                        Vector3d.xyz zeroMeters zeroMeters (planeSpacing |> Quantity.multiplyBy multiplier)
+
+                    newLayer =
+                        { plane =
+                            model.layers
+                                |> ZipList.current
+                                |> .plane
+                                |> SketchPlane3d.translateBy zVector
+                        , rects = []
+                        }
 
                     newFocus =
                         model.focus |> Point3d.translateBy zVector
                 in
-                model
+                { model
+                    | drawnRect = Nothing
+                    , layers =
+                        shift model.layers
+                            |> Maybe.withDefault (insert newLayer model.layers)
+                }
                     |> transitionFocusTo newFocus
 
             CtrlZ ->
@@ -649,6 +666,12 @@ coordinateDecoder prefix mapper =
         mapper
         (Decode.field (prefix ++ "X") <| Decode.float)
         (Decode.field (prefix ++ "Y") <| Decode.float)
+
+
+ziplistInsertBefore : a -> ZipList a -> ZipList a
+ziplistInsertBefore x ziplist =
+    ZipList.insertBefore x ziplist
+        |> ZipList.backward
 
 
 withNoCmd : a -> ( a, Cmd msg )
