@@ -436,6 +436,17 @@ viewSvg model =
             ( Length.centimeters (toFloat screenWidth * 22 / 1000), Length.centimeters (toFloat screenHeight * 17 / 800) )
                 |> Rectangle2d.centeredOn (Frame2d.atPoint model.centrePoint)
                 |> Rectangle3d.on currentLayer.plane
+
+        mouseEvents =
+            case model.drawnRect of
+                Nothing ->
+                    [ StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
+                    ]
+
+                Just _ ->
+                    [ StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
+                    , StyledEvents.onMouseUp MouseUp
+                    ]
     in
     model.layers
         |> ZipList.toList
@@ -445,17 +456,16 @@ viewSvg model =
         |> maybeAppendDrawnRect
         |> (::) (viewFocusRect camera focusRect)
         |> SvgStyled.svg
-            [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
-            , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
-            , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
-            , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
-            , StyledEvents.onMouseUp MouseUp
-            , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
-            , SvgAttr.css
-                [ Css.fill theme.light
-                , Css.margin <| Css.px 0
-                ]
-            ]
+            (mouseEvents
+                ++ [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
+                   , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
+                   , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
+                   , SvgAttr.css
+                        [ Css.fill theme.light
+                        , Css.margin <| Css.px 0
+                        ]
+                   ]
+            )
 
 
 viewLayer : CameraGeometry -> Int -> Layer -> List (SvgStyled.Svg Msg)
@@ -482,7 +492,6 @@ viewRect cameraGeometry behaviour layerIndex rect =
                     Focusable ->
                         [ Svg.Styled.Events.onClick <| ClickedTo layerIndex <| Rectangle3d.centerPoint rect
                         , Svg.Styled.Events.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
-                        , Svg.Styled.Events.stopPropagationOn "mouseup" <| Decode.succeed ( NoOp, True )
                         , SvgAttr.css
                             [ Css.cursor Css.pointer
                             , Css.hover
