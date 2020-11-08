@@ -373,7 +373,7 @@ transitionFocusTo focus model =
 
 
 type SvgBehaviour
-    = Focusable
+    = Focusable Int
     | Inert
 
 
@@ -416,9 +416,6 @@ viewSvg model =
         currentLayer =
             ZipList.current model.layers
 
-        currentLayerIndex =
-            ZipList.currentIndex model.layers
-
         orderByDepth =
             if currentLayer.plane |> isFacingAwayFrom (Camera3d.viewpoint camera.camera) then
                 List.reverse
@@ -428,7 +425,7 @@ viewSvg model =
 
         maybeAppendDrawnRect =
             model.drawnRect
-                |> Maybe.andThen (.rect >> Rectangle3d.on currentLayer.plane >> viewRect camera Inert currentLayerIndex)
+                |> Maybe.andThen (.rect >> Rectangle3d.on currentLayer.plane >> viewRect camera Inert)
                 |> Maybe.map (::)
                 |> Maybe.withDefault identity
 
@@ -470,12 +467,12 @@ viewSvg model =
 viewLayer : CameraGeometry -> Int -> Layer -> SvgStyled.Svg Msg
 viewLayer camera index { rects } =
     rects
-        |> List.filterMap (viewRect camera Focusable index)
+        |> List.filterMap (viewRect camera (Focusable index))
         |> SvgStyled.g []
 
 
-viewRect : CameraGeometry -> SvgBehaviour -> Int -> Rect -> Maybe (SvgStyled.Svg Msg)
-viewRect cameraGeometry behaviour layerIndex rect =
+viewRect : CameraGeometry -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
+viewRect cameraGeometry behaviour rect =
     if Rectangle3d.vertices rect |> List.all (inFontOf cameraGeometry.camera) then
         let
             cornerRadius =
@@ -489,7 +486,7 @@ viewRect cameraGeometry behaviour layerIndex rect =
 
             attributes =
                 case behaviour of
-                    Focusable ->
+                    Focusable layerIndex ->
                         [ Svg.Styled.Events.onClick <| ClickedTo layerIndex <| Rectangle3d.centerPoint rect
                         , Svg.Styled.Events.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
                         , SvgAttr.css
