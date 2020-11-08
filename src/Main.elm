@@ -416,18 +416,15 @@ viewSvg model =
         currentLayer =
             ZipList.current model.layers
 
+        currentIndex =
+            ZipList.currentIndex model.layers
+
         orderByDepth =
             if currentLayer.plane |> isFacingAwayFrom (Camera3d.viewpoint camera.camera) then
                 List.reverse
 
             else
                 identity
-
-        maybeAppendDrawnRect =
-            model.drawnRect
-                |> Maybe.andThen (.rect >> Rectangle3d.on currentLayer.plane >> viewRect camera Inert)
-                |> Maybe.map (::)
-                |> Maybe.withDefault identity
 
         focusRect =
             ( Length.centimeters (toFloat screenWidth * 22 / 1000), Length.centimeters (toFloat screenHeight * 17 / 800) )
@@ -447,28 +444,46 @@ viewSvg model =
     in
     model.layers
         |> ZipList.toList
-        |> List.indexedMap (viewLayer camera)
+        |> List.indexedMap
+            (\index ->
+                viewLayer camera
+                    (if index == currentIndex then
+                        model.drawnRect
+
+                     else
+                        Nothing
+                    )
+                    index
+            )
         |> orderByDepth
-        |> maybeAppendDrawnRect
         |> (::) (viewFocusRect camera focusRect)
         |> SvgStyled.svg
             (mouseEvents
                 ++ [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
                    , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
                    , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
-                   , SvgAttr.css
-                        [ Css.fill theme.light
-                        , Css.margin <| Css.px 0
-                        ]
                    ]
             )
 
 
-viewLayer : CameraGeometry -> Int -> Layer -> SvgStyled.Svg Msg
-viewLayer camera index { rects } =
+viewLayer : CameraGeometry -> Maybe DrawnRect -> Int -> Layer -> SvgStyled.Svg Msg
+viewLayer camera drawnRect index { plane, rects } =
+    let
+        maybeAppendDrawnRect =
+            drawnRect
+                |> Maybe.andThen (.rect >> Rectangle3d.on plane >> viewRect camera Inert)
+                |> Maybe.map (::)
+                |> Maybe.withDefault identity
+    in
     rects
         |> List.filterMap (viewRect camera (Focusable index))
-        |> SvgStyled.g []
+        |> maybeAppendDrawnRect
+        |> SvgStyled.g
+            [ SvgAttr.css
+                [ Css.fill theme.light
+                , Css.margin <| Css.px 0
+                ]
+            ]
 
 
 viewRect : CameraGeometry -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
