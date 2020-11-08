@@ -452,7 +452,6 @@ viewSvg model =
         |> ZipList.toList
         |> List.indexedMap (viewLayer camera)
         |> orderByDepth
-        |> List.concat
         |> maybeAppendDrawnRect
         |> (::) (viewFocusRect camera focusRect)
         |> SvgStyled.svg
@@ -468,10 +467,11 @@ viewSvg model =
             )
 
 
-viewLayer : CameraGeometry -> Int -> Layer -> List (SvgStyled.Svg Msg)
+viewLayer : CameraGeometry -> Int -> Layer -> SvgStyled.Svg Msg
 viewLayer camera index { rects } =
     rects
         |> List.filterMap (viewRect camera Focusable index)
+        |> SvgStyled.g []
 
 
 viewRect : CameraGeometry -> SvgBehaviour -> Int -> Rect -> Maybe (SvgStyled.Svg Msg)
