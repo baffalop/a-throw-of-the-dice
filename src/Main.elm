@@ -71,6 +71,7 @@ type alias Model =
 type alias Layer =
     { plane : SourcePlane
     , rects : List Rect
+    , hue : Float
     }
 
 
@@ -123,6 +124,7 @@ init { devicePixelRatio, screenDimensions } =
         ZipList.singleton
             { plane = sourcePlane
             , rects = []
+            , hue = theme.initialLayerHue
             }
     , centrePoint = centrePoint
     , focus = centrePoint |> Point3d.on sourcePlane
@@ -294,6 +296,9 @@ update msg model =
 
             ArrowKeyPressed key ->
                 let
+                    currentLayer =
+                        ZipList.current model.layers
+
                     planesAreFacingRight =
                         ZipList.current model.layers
                             |> .plane
@@ -324,12 +329,9 @@ update msg model =
                         Vector3d.xyz zeroMeters zeroMeters (planeSpacing |> Quantity.multiplyBy multiplier)
 
                     newLayer =
-                        { plane =
-                            model.layers
-                                |> ZipList.current
-                                |> .plane
-                                |> SketchPlane3d.translateBy zVector
+                        { plane = currentLayer.plane |> SketchPlane3d.translateBy zVector
                         , rects = []
+                        , hue = currentLayer.hue + (multiplier * layerHueSpacing) |> floor |> modBy 256 |> toFloat
                         }
 
                     newFocus =
@@ -373,7 +375,7 @@ transitionFocusTo focus model =
 
 
 type SvgBehaviour
-    = Focusable Int
+    = Focusable Int Css.Color
     | Inert
 
 
@@ -456,7 +458,7 @@ viewSvg model =
                     index
             )
         |> orderByDepth
-        |> (::) (viewFocusRect camera focusRect)
+        |> (::) (viewFocusRect camera currentLayer.hue focusRect)
         |> SvgStyled.svg
             (mouseEvents
                 ++ [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
@@ -467,7 +469,7 @@ viewSvg model =
 
 
 viewLayer : CameraGeometry -> Maybe DrawnRect -> Int -> Layer -> SvgStyled.Svg Msg
-viewLayer camera drawnRect index { plane, rects } =
+viewLayer camera drawnRect index { plane, rects, hue } =
     let
         maybeAppendDrawnRect =
             drawnRect
@@ -476,11 +478,11 @@ viewLayer camera drawnRect index { plane, rects } =
                 |> Maybe.withDefault identity
     in
     rects
-        |> List.filterMap (viewRect camera (Focusable index))
+        |> List.filterMap (viewRect camera (Focusable index <| Css.hsla hue theme.hlSat theme.hlLight theme.alpha))
         |> maybeAppendDrawnRect
         |> SvgStyled.g
             [ SvgAttr.css
-                [ Css.fill theme.light
+                [ Css.fill <| Css.hsla hue theme.saturation theme.lightness theme.alpha
                 , Css.margin <| Css.px 0
                 ]
             ]
@@ -501,13 +503,13 @@ viewRect cameraGeometry behaviour rect =
 
             attributes =
                 case behaviour of
-                    Focusable layerIndex ->
+                    Focusable layerIndex highlightColour ->
                         [ Svg.Styled.Events.onClick <| ClickedTo layerIndex <| Rectangle3d.centerPoint rect
                         , Svg.Styled.Events.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
                         , SvgAttr.css
                             [ Css.cursor Css.pointer
                             , Css.hover
-                                [ Css.fill theme.lighter
+                                [ Css.fill highlightColour
                                 ]
                             ]
                         ]
@@ -524,8 +526,8 @@ viewRect cameraGeometry behaviour rect =
         Nothing
 
 
-viewFocusRect : CameraGeometry -> Rect -> SvgStyled.Svg msg
-viewFocusRect camera rect =
+viewFocusRect : CameraGeometry -> Float -> Rect -> SvgStyled.Svg msg
+viewFocusRect camera hue rect =
     let
         coords =
             Rectangle3d.vertices rect
@@ -542,7 +544,7 @@ viewFocusRect camera rect =
     in
     SvgStyled.path
         [ SvgAttr.d <| SvgPath.toString [ path ]
-        , SvgAttr.stroke "#328354"
+        , SvgAttr.stroke <| "hsl(" ++ String.fromFloat hue ++ ", 60%, 50%"
         , SvgAttr.strokeWidth "2"
         , SvgAttr.strokeDasharray "8 6"
         , SvgAttr.fillOpacity "0"
@@ -827,9 +829,13 @@ reverse key =
 
 theme =
     { dark = Css.hex "13151f"
-    , light = Css.rgba 139 173 185 0.6
-    , lighter = Css.rgba 179 220 234 0.6
     , accent = Css.hex "9e3354"
+    , initialLayerHue = 130
+    , saturation = 0.3
+    , lightness = 0.6
+    , alpha = 0.8
+    , hlSat = 0.7
+    , hlLight = 0.75
     }
 
 
@@ -851,6 +857,10 @@ viewDistance =
 planeSpacing : Length.Length
 planeSpacing =
     Length.centimeters 7
+
+
+layerHueSpacing =
+    40
 
 
 wheelCoefficient =
