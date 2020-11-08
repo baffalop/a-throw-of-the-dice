@@ -478,11 +478,11 @@ viewLayer camera drawnRect index { plane, rects, hue } =
                 |> Maybe.withDefault identity
     in
     rects
-        |> List.filterMap (viewRect camera (Focusable index <| Css.hsla hue theme.hlSat theme.hlLight theme.alpha))
+        |> List.filterMap (viewRect camera (Focusable index <| theme.lighter hue))
         |> maybeAppendDrawnRect
         |> SvgStyled.g
             [ SvgAttr.css
-                [ Css.fill <| Css.hsla hue theme.saturation theme.lightness theme.alpha
+                [ Css.fill <| theme.light hue
                 , Css.margin <| Css.px 0
                 ]
             ]
@@ -830,12 +830,9 @@ reverse key =
 theme =
     { dark = Css.hex "13151f"
     , accent = Css.hex "9e3354"
+    , light = \hue -> Css.hsla hue 0.3 0.6 0.8
+    , lighter = \hue -> Css.hsla hue 0.7 0.75 0.8
     , initialLayerHue = 130
-    , saturation = 0.3
-    , lightness = 0.6
-    , alpha = 0.8
-    , hlSat = 0.7
-    , hlLight = 0.75
     }
 
 
