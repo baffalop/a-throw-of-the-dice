@@ -547,19 +547,8 @@ nonBreakingTexts =
 roundCorners : Length.Length -> List ScreenLine -> List SvgPath.SubPath
 roundCorners radius edges =
     let
-        path =
-            List.concatMap (roundedCornerSegments radius) edges
-
-        endCoords =
-            case List.Extra.last path of
-                Just (LineTo _ (coords :: _)) ->
-                    Just coords
-
-                Just (QuadraticBezierCurveTo _ (( _, coords ) :: _)) ->
-                    Just coords
-
-                _ ->
-                    Nothing
+        ( endCoords, path ) =
+            concatMapCarry (roundedCornerSegments radius) edges
     in
     endCoords
         |> Maybe.map
@@ -572,7 +561,7 @@ roundCorners radius edges =
         |> Maybe.withDefault []
 
 
-roundedCornerSegments : Length.Length -> ScreenLine -> List DrawTo
+roundedCornerSegments : Length.Length -> ScreenLine -> ( ( Float, Float ), List DrawTo )
 roundedCornerSegments radius edge =
     let
         diameter =
@@ -582,8 +571,13 @@ roundedCornerSegments radius edge =
             LineSegment2d.endpoints edge
     in
     if LineSegment2d.length edge |> Quantity.lessThan diameter then
-        [ QuadraticBezierCurveTo Absolute [ ( svgCoord a, svgCoord <| LineSegment2d.midpoint edge ) ]
+        let
+            endCoord =
+                svgCoord <| LineSegment2d.midpoint edge
+        in
+        [ QuadraticBezierCurveTo Absolute [ ( svgCoord a, endCoord ) ]
         ]
+            |> Tuple.pair endCoord
 
     else
         let
@@ -597,10 +591,14 @@ roundedCornerSegments radius edge =
 
             anchorB =
                 b |> Point2d.translateBy (Vector2d.reverse radiusVector)
+
+            endCoord =
+                svgCoord anchorB
         in
         [ QuadraticBezierCurveTo Absolute [ ( svgCoord a, svgCoord anchorA ) ]
-        , LineTo Absolute [ svgCoord anchorB ]
+        , LineTo Absolute [ endCoord ]
         ]
+            |> Tuple.pair endCoord
 
 
 svgCoord : ScreenPoint -> ( Float, Float )
@@ -767,6 +765,18 @@ coordinateDecoder prefix mapper =
         mapper
         (Decode.field (prefix ++ "X") <| Decode.float)
         (Decode.field (prefix ++ "Y") <| Decode.float)
+
+
+{-| Carry a value out of a list at the same time as performing a concatMap
+-}
+concatMapCarry : (a -> ( c, List b )) -> List a -> ( Maybe c, List b )
+concatMapCarry f =
+    let
+        mapCarrier item ( _, accumulatedList ) =
+            f item
+                |> Tuple.mapBoth Just ((++) accumulatedList)
+    in
+    List.foldl mapCarrier ( Nothing, [] )
 
 
 ziplistInsertBefore : a -> ZipList a -> ZipList a
