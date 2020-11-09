@@ -490,7 +490,13 @@ viewLayer camera drawnRect index { plane, rects, hue } =
 
 viewRect : CameraGeometry -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
 viewRect cameraGeometry behaviour rect =
-    if Rectangle3d.vertices rect |> List.all (inFontOf cameraGeometry.camera) then
+    let
+        viewPlane =
+            cameraGeometry.camera
+                |> Camera3d.viewpoint
+                |> Viewpoint3d.viewPlane
+    in
+    if Rectangle3d.vertices rect |> List.all (inFrontOf viewPlane) then
         let
             cornerRadius =
                 Length.centimeters 0.2
@@ -527,11 +533,21 @@ viewRect cameraGeometry behaviour rect =
 
 
 viewFocusRect : CameraGeometry -> Float -> Rect -> SvgStyled.Svg msg
-viewFocusRect camera hue rect =
+viewFocusRect cameraGeometry hue rect =
     let
+        viewPlane =
+            cameraGeometry.camera
+                |> Camera3d.viewpoint
+                |> Viewpoint3d.viewPlane
+                -- we will use this plane to find intersections
+                -- but if you try to project a point that lies on the viewplane itself you get NaNs
+                -- so offset forward little so intersections lie in front of the camera
+                |> SketchPlane3d.offsetBy (Length.centimeter |> Quantity.multiplyBy -1)
+
         coords =
-            Rectangle3d.vertices rect
-                |> List.map (projectPoint camera >> svgCoord)
+            Rectangle3d.edges rect
+                |> List.concatMap (verticesClippedTo viewPlane)
+                |> List.map (projectPoint cameraGeometry >> svgCoord)
 
         ( startCoords, remainingCoords ) =
             List.Extra.uncons coords
@@ -624,6 +640,28 @@ roundedCornerSegments radius edge =
             |> Tuple.pair endCoord
 
 
+verticesClippedTo : ViewPlane -> WorldLine -> List WorldPoint
+verticesClippedTo viewPlane edge =
+    let
+        ( start, end ) =
+            LineSegment3d.endpoints edge
+    in
+    case edge |> LineSegment3d.intersectionWithPlane (SketchPlane3d.toPlane viewPlane) of
+        Nothing ->
+            if start |> inFrontOf viewPlane then
+                [ start, end ]
+
+            else
+                []
+
+        Just intersection ->
+            if start |> inFrontOf viewPlane then
+                [ start, intersection ]
+
+            else
+                [ intersection, end ]
+
+
 svgCoord : ScreenPoint -> ( Float, Float )
 svgCoord =
     Point2d.toRecord Length.inCssPixels
@@ -636,6 +674,10 @@ svgCoord =
 
 type alias SourcePlane =
     SketchPlane3d Length.Meters World { defines : SourceCoordinates }
+
+
+type alias ViewPlane =
+    SketchPlane3d Length.Meters World { defines : ScreenCoordinates }
 
 
 type SourceCoordinates
@@ -733,11 +775,9 @@ projectPoint { camera, screenRect } =
     Point3d.Projection.toScreenSpace camera screenRect
 
 
-inFontOf : Camera -> WorldPoint -> Bool
-inFontOf =
-    Camera3d.viewpoint
-        >> Viewpoint3d.viewPlane
-        >> SketchPlane3d.normalAxis
+inFrontOf : ViewPlane -> WorldPoint -> Bool
+inFrontOf =
+    SketchPlane3d.normalAxis
         >> Point3d.signedDistanceAlong
         >> (<<) (Quantity.lessThan (Length.meters 0))
 
