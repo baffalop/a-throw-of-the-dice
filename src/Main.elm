@@ -830,8 +830,8 @@ reverse key =
 theme =
     { dark = Css.hex "13151f"
     , accent = Css.hex "9e3354"
-    , light = \hue -> Css.hsla hue 0.3 0.6 0.8
-    , lighter = \hue -> Css.hsla hue 0.7 0.75 0.8
+    , light = \hue -> Css.hsl hue 0.3 0.6
+    , lighter = \hue -> Css.hsl hue 0.7 0.75
     , initialLayerHue = 130
     }
 
