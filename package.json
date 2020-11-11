@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "start": "parcel serve ./src/index.html"
+    "start": "parcel serve ./src/index.html",
+    "build": "parcel build ./src/index.html --public-url ./"
   },
   "devDependencies": {
     "elm-hot": "^1.1.5",
