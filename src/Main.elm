@@ -275,27 +275,20 @@ update msg model =
                             |> .plane
 
                     angle =
-                        if currentPlane == targetPlane then
-                            Angle.degrees 0
-
-                        else
-                            let
-                                multiplier =
-                                    if layerIndex - ZipList.currentIndex model.layers < 0 then
-                                        1
-
-                                    else
-                                        -1
-                            in
-                            currentPlane
-                                |> SketchPlane3d.xAxis
-                                |> Axis3d.direction
-                                |> Direction3d.angleFrom
-                                    (targetPlane
-                                        |> SketchPlane3d.xAxis
-                                        |> Axis3d.direction
-                                    )
-                                |> Quantity.multiplyBy multiplier
+                        currentPlane
+                            |> SketchPlane3d.xAxis
+                            |> Axis3d.direction
+                            |> Direction3d.angleFrom
+                                (targetPlane
+                                    |> SketchPlane3d.xAxis
+                                    |> Axis3d.direction
+                                )
+                            |> Quantity.multiplyBy
+                                (ZipList.currentIndex model.layers
+                                    - layerIndex
+                                    |> sign
+                                    |> toFloat
+                                )
                 in
                 if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
                     withLayerSet
@@ -908,6 +901,11 @@ reverse key =
 
         Right ->
             Left
+
+
+sign : Int -> Int
+sign n =
+    n // abs n
 
 
 
