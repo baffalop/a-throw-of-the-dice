@@ -11957,24 +11957,6 @@ var $STTR13$ziplist$ZipList$current = function (_v0) {
 	var elem = _v0.b;
 	return elem;
 };
-var $ianmackenzie$elm_geometry$Point3d$equalWithin = F3(
-	function (_v0, _v1, _v2) {
-		var eps = _v0.a;
-		var p1 = _v1.a;
-		var p2 = _v2.a;
-		if (eps > 0) {
-			var nz = (p2.z - p1.z) / eps;
-			var ny = (p2.y - p1.y) / eps;
-			var nx = (p2.x - p1.x) / eps;
-			return (((nx * nx) + (ny * ny)) + (nz * nz)) <= 1;
-		} else {
-			if (!eps) {
-				return _Utils_eq(p1.x, p2.x) && (_Utils_eq(p1.y, p2.y) && _Utils_eq(p1.z, p2.z));
-			} else {
-				return false;
-			}
-		}
-	});
 var $STTR13$ziplist$ZipList$currentIndex = function (_v0) {
 	var before = _v0.a;
 	return $elm$core$List$length(before);
@@ -12099,6 +12081,12 @@ var $ianmackenzie$elm_geometry$Point3d$interpolateFrom = F3(
 		return (t <= 0.5) ? $ianmackenzie$elm_geometry$Geometry$Types$Point3d(
 			{x: p1.x + (t * (p2.x - p1.x)), y: p1.y + (t * (p2.y - p1.y)), z: p1.z + (t * (p2.z - p1.z))}) : $ianmackenzie$elm_geometry$Geometry$Types$Point3d(
 			{x: p2.x + ((1 - t) * (p1.x - p2.x)), y: p2.y + ((1 - t) * (p1.y - p2.y)), z: p2.z + ((1 - t) * (p1.z - p2.z))});
+	});
+var $ianmackenzie$elm_units$Quantity$interpolateFrom = F3(
+	function (_v0, _v1, parameter) {
+		var start = _v0.a;
+		var end = _v1.a;
+		return (parameter <= 0.5) ? $ianmackenzie$elm_units$Quantity$Quantity(start + (parameter * (end - start))) : $ianmackenzie$elm_units$Quantity$Quantity(end + ((1 - parameter) * (start - end)));
 	});
 var $elm$core$Maybe$map = F2(
 	function (f, maybe) {
@@ -12653,7 +12641,36 @@ var $ianmackenzie$elm_geometry$Rectangle3d$on = F2(
 				dimensions: $ianmackenzie$elm_geometry$Rectangle2d$dimensions(rectangle2d)
 			});
 	});
-var $author$project$Main$planeSpacing = $ianmackenzie$elm_units$Length$centimeters(7);
+var $ianmackenzie$elm_geometry$Vector3d$xyz = F3(
+	function (_v0, _v1, _v2) {
+		var x = _v0.a;
+		var y = _v1.a;
+		var z = _v2.a;
+		return $ianmackenzie$elm_geometry$Geometry$Types$Vector3d(
+			{x: x, y: y, z: z});
+	});
+var $ianmackenzie$elm_geometry$Vector3d$centimeters = F3(
+	function (x, y, z) {
+		return A3(
+			$ianmackenzie$elm_geometry$Vector3d$xyz,
+			$ianmackenzie$elm_units$Length$centimeters(x),
+			$ianmackenzie$elm_units$Length$centimeters(y),
+			$ianmackenzie$elm_units$Length$centimeters(z));
+	});
+var $ianmackenzie$elm_geometry$Axis3d$translateBy = F2(
+	function (vector, _v0) {
+		var axis = _v0.a;
+		return A2(
+			$ianmackenzie$elm_geometry$Axis3d$through,
+			A2($ianmackenzie$elm_geometry$Point3d$translateBy, vector, axis.originPoint),
+			axis.direction);
+	});
+var $ianmackenzie$elm_geometry$Axis3d$y = A2($ianmackenzie$elm_geometry$Axis3d$through, $ianmackenzie$elm_geometry$Point3d$origin, $ianmackenzie$elm_geometry$Direction3d$y);
+var $author$project$Main$planeFanAxis = A2(
+	$ianmackenzie$elm_geometry$Axis3d$translateBy,
+	A3($ianmackenzie$elm_geometry$Vector3d$centimeters, -32, 0, 0),
+	$ianmackenzie$elm_geometry$Axis3d$y);
+var $author$project$Main$planeSpacing = $ianmackenzie$elm_units$Angle$degrees(25);
 var $ianmackenzie$elm_geometry$Point2d$at_ = F2(
 	function (_v0, _v1) {
 		var rate = _v0.a;
@@ -12802,14 +12819,6 @@ var $ianmackenzie$elm_geometry$Point2d$xCoordinateIn = F2(
 		var _v3 = frame.xDirection;
 		var d = _v3.a;
 		return $ianmackenzie$elm_units$Quantity$Quantity(((p.x - p0.x) * d.x) + ((p.y - p0.y) * d.y));
-	});
-var $ianmackenzie$elm_geometry$Vector3d$xyz = F3(
-	function (_v0, _v1, _v2) {
-		var x = _v0.a;
-		var y = _v1.a;
-		var z = _v2.a;
-		return $ianmackenzie$elm_geometry$Geometry$Types$Vector3d(
-			{x: x, y: y, z: z});
 	});
 var $ianmackenzie$elm_geometry$Point3d$xyzIn = F4(
 	function (_v0, _v1, _v2, _v3) {
@@ -12996,7 +13005,7 @@ var $author$project$Main$rectFrom = F2(
 			$ianmackenzie$elm_units$Length$meters(0),
 			$ianmackenzie$elm_geometry$Vector2d$xComponent(
 				A2($ianmackenzie$elm_geometry$Vector2d$from, originPoint, endPoint)));
-		var halfHeight = A2($ianmackenzie$elm_geometry$Vector2d$centimeters, 0, 0.5);
+		var halfHeight = A2($ianmackenzie$elm_geometry$Vector2d$centimeters, 0, 0.6);
 		var topLeft = A2(
 			$ianmackenzie$elm_geometry$Point2d$translateBy,
 			$ianmackenzie$elm_geometry$Vector2d$reverse(halfHeight),
@@ -13020,6 +13029,27 @@ var $author$project$Main$reverse = function (key) {
 		return $author$project$Main$Left;
 	}
 };
+var $ianmackenzie$elm_geometry$SketchPlane3d$rotateAround = F3(
+	function (axis, angle, sketchPlane) {
+		return $ianmackenzie$elm_geometry$SketchPlane3d$unsafe(
+			{
+				originPoint: A3(
+					$ianmackenzie$elm_geometry$Point3d$rotateAround,
+					axis,
+					angle,
+					$ianmackenzie$elm_geometry$SketchPlane3d$originPoint(sketchPlane)),
+				xDirection: A3(
+					$ianmackenzie$elm_geometry$Direction3d$rotateAround,
+					axis,
+					angle,
+					$ianmackenzie$elm_geometry$SketchPlane3d$xDirection(sketchPlane)),
+				yDirection: A3(
+					$ianmackenzie$elm_geometry$Direction3d$rotateAround,
+					axis,
+					angle,
+					$ianmackenzie$elm_geometry$SketchPlane3d$yDirection(sketchPlane))
+			});
+	});
 var $ianmackenzie$elm_units$Duration$seconds = function (numSeconds) {
 	return $ianmackenzie$elm_units$Quantity$Quantity(numSeconds);
 };
@@ -13027,29 +13057,65 @@ var $ianmackenzie$elm_units$Duration$milliseconds = function (numMilliseconds) {
 	return $ianmackenzie$elm_units$Duration$seconds(0.001 * numMilliseconds);
 };
 var $author$project$Main$transitionDuration = $ianmackenzie$elm_units$Duration$milliseconds(900);
-var $author$project$Main$transitionFocusTo = F2(
-	function (focus, model) {
+var $elm$core$Basics$atan2 = _Basics_atan2;
+var $ianmackenzie$elm_geometry$Direction2d$angleFrom = F2(
+	function (_v0, _v1) {
+		var d1 = _v0.a;
+		var d2 = _v1.a;
+		var relativeY = (d1.x * d2.y) - (d1.y * d2.x);
+		var relativeX = (d1.x * d2.x) + (d1.y * d2.y);
+		return $ianmackenzie$elm_units$Quantity$Quantity(
+			A2($elm$core$Basics$atan2, relativeY, relativeX));
+	});
+var $ianmackenzie$elm_units$Quantity$plus = F2(
+	function (_v0, _v1) {
+		var y = _v0.a;
+		var x = _v1.a;
+		return $ianmackenzie$elm_units$Quantity$Quantity(x + y);
+	});
+var $ianmackenzie$elm_geometry$SketchPlane3d$xAxis = function (_v0) {
+	var sketchPlane = _v0.a;
+	return A2($ianmackenzie$elm_geometry$Axis3d$through, sketchPlane.originPoint, sketchPlane.xDirection);
+};
+var $author$project$Main$transitionLayerFrom = F2(
+	function (previousPlane, model) {
+		var targetPlane = $STTR13$ziplist$ZipList$current(model.layers).plane;
+		var newFocus = A2(
+			$ianmackenzie$elm_geometry$Point3d$on,
+			targetPlane,
+			A2($ianmackenzie$elm_geometry$Point3d$projectInto, previousPlane, model.focus));
+		var angle = A2(
+			$ianmackenzie$elm_geometry$Direction2d$angleFrom,
+			A2(
+				$elm$core$Maybe$withDefault,
+				$ianmackenzie$elm_geometry$Direction2d$positiveX,
+				A2(
+					$ianmackenzie$elm_geometry$Direction3d$projectInto,
+					$ianmackenzie$elm_geometry$SketchPlane3d$xz,
+					$ianmackenzie$elm_geometry$Axis3d$direction(
+						$ianmackenzie$elm_geometry$SketchPlane3d$xAxis(previousPlane)))),
+			A2(
+				$elm$core$Maybe$withDefault,
+				$ianmackenzie$elm_geometry$Direction2d$positiveX,
+				A2(
+					$ianmackenzie$elm_geometry$Direction3d$projectInto,
+					$ianmackenzie$elm_geometry$SketchPlane3d$xz,
+					$ianmackenzie$elm_geometry$Axis3d$direction(
+						$ianmackenzie$elm_geometry$SketchPlane3d$xAxis(targetPlane)))));
 		return _Utils_update(
 			model,
 			{
 				transition: $elm$core$Maybe$Just(
-					{at: 0, from: model.focus, to: focus})
-			});
-	});
-var $ianmackenzie$elm_geometry$SketchPlane3d$translateBy = F2(
-	function (vector, sketchPlane) {
-		return $ianmackenzie$elm_geometry$SketchPlane3d$unsafe(
-			{
-				originPoint: A2(
-					$ianmackenzie$elm_geometry$Point3d$translateBy,
-					vector,
-					$ianmackenzie$elm_geometry$SketchPlane3d$originPoint(sketchPlane)),
-				xDirection: $ianmackenzie$elm_geometry$SketchPlane3d$xDirection(sketchPlane),
-				yDirection: $ianmackenzie$elm_geometry$SketchPlane3d$yDirection(sketchPlane)
+					{
+						at: 0,
+						fromAzimuth: model.azimuth,
+						fromFocus: model.focus,
+						toAzimuth: A2($ianmackenzie$elm_units$Quantity$plus, angle, model.azimuth),
+						toFocus: newFocus
+					})
 			});
 	});
 var $author$project$Main$wheelCoefficient = 0.3;
-var $author$project$Main$zeroMeters = $ianmackenzie$elm_units$Length$meters(0);
 var $STTR13$ziplist$ZipList$backward = function (zipList) {
 	var _v0 = zipList;
 	var before = _v0.a;
@@ -13190,20 +13256,19 @@ var $author$project$Main$update = F2(
 							});
 					case 'ClickedTo':
 						var layerIndex = msg.a;
-						var newFocus = msg.b;
-						var withLayerSet = _Utils_update(
-							model,
-							{
-								layers: A2(
-									$elm$core$Maybe$withDefault,
-									model.layers,
-									A2($STTR13$ziplist$ZipList$goToIndex, layerIndex, model.layers))
-							});
-						return A3(
-							$ianmackenzie$elm_geometry$Point3d$equalWithin,
-							$ianmackenzie$elm_units$Length$centimeters(0.2),
-							model.focus,
-							newFocus) ? withLayerSet : A2($author$project$Main$transitionFocusTo, newFocus, withLayerSet);
+						return _Utils_eq(
+							layerIndex,
+							$STTR13$ziplist$ZipList$currentIndex(model.layers)) ? model : A2(
+							$author$project$Main$transitionLayerFrom,
+							$STTR13$ziplist$ZipList$current(model.layers).plane,
+							_Utils_update(
+								model,
+								{
+									layers: A2(
+										$elm$core$Maybe$withDefault,
+										model.layers,
+										A2($STTR13$ziplist$ZipList$goToIndex, layerIndex, model.layers))
+								}));
 					case 'AnimationTick':
 						var delta = msg.a;
 						var _v2 = model.transition;
@@ -13211,19 +13276,19 @@ var $author$project$Main$update = F2(
 							return model;
 						} else {
 							var transition = _v2.a;
-							var from = transition.from;
-							var to = transition.to;
+							var fromFocus = transition.fromFocus;
+							var toFocus = transition.toFocus;
+							var fromAzimuth = transition.fromAzimuth;
+							var toAzimuth = transition.toAzimuth;
 							var at = transition.at + (delta / $ianmackenzie$elm_units$Duration$inMilliseconds($author$project$Main$transitionDuration));
+							var easedAt = $elm_community$easing_functions$Ease$inOutCubic(at);
 							return (at >= 1) ? _Utils_update(
 								model,
-								{focus: to, transition: $elm$core$Maybe$Nothing}) : _Utils_update(
+								{azimuth: toAzimuth, focus: toFocus, transition: $elm$core$Maybe$Nothing}) : _Utils_update(
 								model,
 								{
-									focus: A3(
-										$ianmackenzie$elm_geometry$Point3d$interpolateFrom,
-										from,
-										to,
-										$elm_community$easing_functions$Ease$inOutCubic(at)),
+									azimuth: A3($ianmackenzie$elm_units$Quantity$interpolateFrom, fromAzimuth, toAzimuth, easedAt),
+									focus: A3($ianmackenzie$elm_geometry$Point3d$interpolateFrom, fromFocus, toFocus, easedAt),
 									transition: $elm$core$Maybe$Just(
 										_Utils_update(
 											transition,
@@ -13240,11 +13305,11 @@ var $author$project$Main$update = F2(
 							});
 					case 'ArrowKeyPressed':
 						var key = msg.a;
-						var planesAreFacingRight = A2(
+						var focusedPlaneFacesRight = A2(
 							$author$project$Main$isFacingRightOf,
 							$author$project$Main$makeViewpoint(model),
 							$STTR13$ziplist$ZipList$current(model.layers).plane);
-						var direction = planesAreFacingRight ? key : $author$project$Main$reverse(key);
+						var direction = focusedPlaneFacesRight ? $author$project$Main$reverse(key) : key;
 						var currentLayer = $STTR13$ziplist$ZipList$current(model.layers);
 						var _v3 = function () {
 							if (direction.$ === 'Left') {
@@ -13264,23 +13329,22 @@ var $author$project$Main$update = F2(
 						var multiplier = _v3.multiplier;
 						var shift = _v3.shift;
 						var insert = _v3.insert;
-						var zVector = A3(
-							$ianmackenzie$elm_geometry$Vector3d$xyz,
-							$author$project$Main$zeroMeters,
-							$author$project$Main$zeroMeters,
-							A2($ianmackenzie$elm_units$Quantity$multiplyBy, multiplier, $author$project$Main$planeSpacing));
-						var newFocus = A2($ianmackenzie$elm_geometry$Point3d$translateBy, zVector, model.focus);
+						var newPlane = A3(
+							$ianmackenzie$elm_geometry$SketchPlane3d$rotateAround,
+							$author$project$Main$planeFanAxis,
+							A2($ianmackenzie$elm_units$Quantity$multiplyBy, multiplier, $author$project$Main$planeSpacing),
+							currentLayer.plane);
 						var newLayer = {
 							hue: A2(
 								$elm$core$Basics$modBy,
 								256,
 								$elm$core$Basics$floor(currentLayer.hue + (multiplier * $author$project$Main$layerHueSpacing))),
-							plane: A2($ianmackenzie$elm_geometry$SketchPlane3d$translateBy, zVector, currentLayer.plane),
+							plane: newPlane,
 							rects: _List_Nil
 						};
 						return A2(
-							$author$project$Main$transitionFocusTo,
-							newFocus,
+							$author$project$Main$transitionLayerFrom,
+							currentLayer.plane,
 							_Utils_update(
 								model,
 								{
@@ -15639,7 +15703,6 @@ var $rtfeldman$elm_css$VirtualDom$Styled$attribute = F2(
 			'');
 	});
 var $rtfeldman$elm_css$Svg$Styled$Attributes$height = $rtfeldman$elm_css$VirtualDom$Styled$attribute('height');
-var $elm$core$Basics$atan2 = _Basics_atan2;
 var $ianmackenzie$elm_geometry$Direction3d$angleFrom = F2(
 	function (_v0, _v1) {
 		var d1 = _v0.a;
@@ -15810,6 +15873,18 @@ var $ianmackenzie$elm_geometry$Rectangle3d$edges = function (rectangle) {
 		]);
 };
 var $rtfeldman$elm_css$Svg$Styled$Attributes$fillOpacity = $rtfeldman$elm_css$VirtualDom$Styled$attribute('fill-opacity');
+var $ianmackenzie$elm_geometry$SketchPlane3d$translateBy = F2(
+	function (vector, sketchPlane) {
+		return $ianmackenzie$elm_geometry$SketchPlane3d$unsafe(
+			{
+				originPoint: A2(
+					$ianmackenzie$elm_geometry$Point3d$translateBy,
+					vector,
+					$ianmackenzie$elm_geometry$SketchPlane3d$originPoint(sketchPlane)),
+				xDirection: $ianmackenzie$elm_geometry$SketchPlane3d$xDirection(sketchPlane),
+				yDirection: $ianmackenzie$elm_geometry$SketchPlane3d$yDirection(sketchPlane)
+			});
+	});
 var $ianmackenzie$elm_geometry$SketchPlane3d$translateIn = F3(
 	function (direction, distance, sketchPlane) {
 		return A2(
@@ -16719,7 +16794,7 @@ var $author$project$Main$viewRect = F3(
 			$elm$core$List$all,
 			$author$project$Main$inFrontOf(viewPlane),
 			$ianmackenzie$elm_geometry$Rectangle3d$vertices(rect))) {
-			var cornerRadius = $ianmackenzie$elm_units$Length$centimeters(0.2);
+			var cornerRadius = $ianmackenzie$elm_units$Length$centimeters(0.15);
 			var path = A2(
 				$author$project$Main$roundCorners,
 				cornerRadius,
@@ -16848,7 +16923,7 @@ var $author$project$Main$viewSvg = function (model) {
 	var orderByDepth = A2(
 		$author$project$Main$isFacingAwayFrom,
 		$ianmackenzie$elm_3d_camera$Camera3d$viewpoint(camera.camera),
-		currentLayer.plane) ? $elm$core$List$reverse : $elm$core$Basics$identity;
+		currentLayer.plane) ? $elm$core$Basics$identity : $elm$core$List$reverse;
 	var _v0 = $author$project$Main$subtractScreenMargins(model.screenDimensions);
 	var screenWidth = _v0.a;
 	var screenHeight = _v0.b;
@@ -16953,7 +17028,7 @@ var $author$project$Main$main = $elm$browser$Browser$document(
 		view: function (model) {
 			return {
 				body: $author$project$Main$view(model),
-				title: 'A wee playabout'
+				title: 'One Toss of the Mouse'
 			};
 		}
 	});
@@ -17556,7 +17631,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "53096" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "49180" + '/');
 
   ws.onmessage = function (event) {
     checkedAssets = {};
