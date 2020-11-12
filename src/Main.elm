@@ -539,7 +539,7 @@ viewRect cameraGeometry behaviour rect =
     if Rectangle3d.vertices rect |> List.all (inFrontOf viewPlane) then
         let
             cornerRadius =
-                Length.centimeters 0.2
+                Length.centimeters 0.15
 
             path =
                 rect
@@ -778,7 +778,7 @@ rectFrom : SourcePoint -> SourcePoint -> PlaneRect
 rectFrom originPoint endPoint =
     let
         halfHeight =
-            Vector2d.centimeters 0 0.5
+            Vector2d.centimeters 0 0.6
 
         length =
             Vector2d.from originPoint endPoint
