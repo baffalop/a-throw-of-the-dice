@@ -256,25 +256,17 @@ update msg model =
                 }
 
             ClickedTo layerIndex _ ->
-                let
-                    currentIndex =
-                        ZipList.currentIndex model.layers
-                in
-                if layerIndex == currentIndex then
+                if layerIndex == ZipList.currentIndex model.layers then
                     model
 
                 else
-                    let
-                        currentLayer =
-                            ZipList.current model.layers
-                    in
                     { model
                         | layers =
                             model.layers
                                 |> ZipList.goToIndex layerIndex
                                 |> Maybe.withDefault model.layers
                     }
-                        |> transitionLayerFrom currentLayer.plane currentIndex
+                        |> transitionLayerFrom (ZipList.current model.layers |> .plane)
 
             AnimationTick delta ->
                 case model.transition of
@@ -354,7 +346,7 @@ update msg model =
                         shift model.layers
                             |> Maybe.withDefault (insert newLayer model.layers)
                 }
-                    |> transitionLayerFrom currentLayer.plane (ZipList.currentIndex model.layers)
+                    |> transitionLayerFrom currentLayer.plane
 
             CtrlZ ->
                 let
@@ -369,8 +361,8 @@ update msg model =
                 }
 
 
-transitionLayerFrom : SourcePlane -> Int -> Model -> Model
-transitionLayerFrom previousPlane previousIndex model =
+transitionLayerFrom : SourcePlane -> Model -> Model
+transitionLayerFrom previousPlane model =
     let
         targetPlane =
             model.layers
@@ -378,19 +370,17 @@ transitionLayerFrom previousPlane previousIndex model =
                 |> .plane
 
         angle =
-            previousPlane
+            targetPlane
                 |> SketchPlane3d.xAxis
                 |> Axis3d.direction
-                |> Direction3d.angleFrom
-                    (targetPlane
+                |> Direction3d.projectInto SketchPlane3d.xz
+                |> Maybe.withDefault Direction2d.positiveX
+                |> Direction2d.angleFrom
+                    (previousPlane
                         |> SketchPlane3d.xAxis
                         |> Axis3d.direction
-                    )
-                |> Quantity.multiplyBy
-                    (previousIndex
-                        - ZipList.currentIndex model.layers
-                        |> sign
-                        |> toFloat
+                        |> Direction3d.projectInto SketchPlane3d.xz
+                        |> Maybe.withDefault Direction2d.positiveX
                     )
 
         newFocus =
