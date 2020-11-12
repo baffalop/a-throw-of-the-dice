@@ -82,8 +82,10 @@ type alias DrawnRect =
 
 
 type alias Transition =
-    { from : WorldPoint
-    , to : WorldPoint
+    { fromFocus : WorldPoint
+    , toFocus : WorldPoint
+    , fromAzimuth : Angle
+    , toAzimuth : Angle
     , at : Float
     }
 
@@ -267,27 +269,32 @@ update msg model =
                     withLayerSet
 
                 else
-                    withLayerSet |> transitionFocusTo newFocus
+                    withLayerSet |> transitionFocusTo newFocus model.azimuth
 
             AnimationTick delta ->
                 case model.transition of
                     Nothing ->
                         model
 
-                    Just ({ from, to } as transition) ->
+                    Just ({ fromFocus, toFocus, fromAzimuth, toAzimuth } as transition) ->
                         let
                             at =
                                 transition.at + (delta / Duration.inMilliseconds transitionDuration)
+
+                            easedAt =
+                                Ease.inOutCubic at
                         in
                         if at >= 1 then
                             { model
-                                | focus = to
+                                | focus = toFocus
+                                , azimuth = toAzimuth
                                 , transition = Nothing
                             }
 
                         else
                             { model
-                                | focus = Point3d.interpolateFrom from to <| Ease.inOutCubic at
+                                | focus = Point3d.interpolateFrom fromFocus toFocus easedAt
+                                , azimuth = Quantity.interpolateFrom fromAzimuth toAzimuth easedAt
                                 , transition = Just { transition | at = at }
                             }
 
@@ -325,9 +332,12 @@ update msg model =
                                 , insert = ziplistInsertBefore
                                 }
 
+                    angle =
+                        planeSpacing |> Quantity.multiplyBy multiplier
+
                     newPlane =
                         currentLayer.plane
-                            |> SketchPlane3d.rotateAround planeFanAxis (planeSpacing |> Quantity.multiplyBy multiplier)
+                            |> SketchPlane3d.rotateAround planeFanAxis angle
 
                     newLayer =
                         { plane = newPlane
@@ -339,6 +349,11 @@ update msg model =
                         model.focus
                             |> Point3d.projectInto currentLayer.plane
                             |> Point3d.on newPlane
+
+                    newAzimuth =
+                        angle
+                            |> Quantity.multiplyBy -1
+                            |> Quantity.plus model.azimuth
                 in
                 { model
                     | drawnRect = Nothing
@@ -346,7 +361,7 @@ update msg model =
                         shift model.layers
                             |> Maybe.withDefault (insert newLayer model.layers)
                 }
-                    |> transitionFocusTo newFocus
+                    |> transitionFocusTo newFocus newAzimuth
 
             CtrlZ ->
                 let
@@ -361,13 +376,15 @@ update msg model =
                 }
 
 
-transitionFocusTo : WorldPoint -> Model -> Model
-transitionFocusTo focus model =
+transitionFocusTo : WorldPoint -> Angle -> Model -> Model
+transitionFocusTo focus azimuth model =
     { model
         | transition =
             Just
-                { from = model.focus
-                , to = focus
+                { fromFocus = model.focus
+                , toFocus = focus
+                , fromAzimuth = model.azimuth
+                , toAzimuth = azimuth
                 , at = 0
                 }
     }
