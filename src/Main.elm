@@ -255,46 +255,26 @@ update msg model =
                     , elevation = model.elevation |> add deltaY
                 }
 
-            ClickedTo layerIndex newFocus ->
+            ClickedTo layerIndex _ ->
                 let
-                    withLayerSet =
-                        { model
-                            | layers =
-                                model.layers
-                                    |> ZipList.goToIndex layerIndex
-                                    |> Maybe.withDefault model.layers
-                        }
-
-                    currentPlane =
-                        ZipList.current model.layers
-                            |> .plane
-
-                    targetPlane =
-                        withLayerSet.layers
-                            |> ZipList.current
-                            |> .plane
-
-                    angle =
-                        currentPlane
-                            |> SketchPlane3d.xAxis
-                            |> Axis3d.direction
-                            |> Direction3d.angleFrom
-                                (targetPlane
-                                    |> SketchPlane3d.xAxis
-                                    |> Axis3d.direction
-                                )
-                            |> Quantity.multiplyBy
-                                (ZipList.currentIndex model.layers
-                                    - layerIndex
-                                    |> sign
-                                    |> toFloat
-                                )
+                    currentIndex =
+                        ZipList.currentIndex model.layers
                 in
-                if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
-                    withLayerSet
+                if layerIndex == currentIndex then
+                    model
 
                 else
-                    withLayerSet |> transitionFocusTo newFocus angle
+                    let
+                        currentLayer =
+                            ZipList.current model.layers
+                    in
+                    { model
+                        | layers =
+                            model.layers
+                                |> ZipList.goToIndex layerIndex
+                                |> Maybe.withDefault model.layers
+                    }
+                        |> transitionLayerFrom currentLayer.plane currentIndex
 
             AnimationTick delta ->
                 case model.transition of
@@ -339,10 +319,10 @@ update msg model =
 
                     direction =
                         if focusedPlaneFacesRight then
-                            key
+                            reverse key
 
                         else
-                            reverse key
+                            key
 
                     { multiplier, shift, insert } =
                         case direction of
@@ -358,23 +338,15 @@ update msg model =
                                 , insert = ziplistInsertBefore
                                 }
 
-                    angle =
-                        planeSpacing |> Quantity.multiplyBy multiplier
-
                     newPlane =
                         currentLayer.plane
-                            |> SketchPlane3d.rotateAround planeFanAxis angle
+                            |> SketchPlane3d.rotateAround planeFanAxis (planeSpacing |> Quantity.multiplyBy multiplier)
 
                     newLayer =
                         { plane = newPlane
                         , rects = []
                         , hue = currentLayer.hue + (multiplier * layerHueSpacing) |> floor |> modBy 256 |> toFloat
                         }
-
-                    newFocus =
-                        model.focus
-                            |> Point3d.projectInto currentLayer.plane
-                            |> Point3d.on newPlane
                 in
                 { model
                     | drawnRect = Nothing
@@ -382,7 +354,7 @@ update msg model =
                         shift model.layers
                             |> Maybe.withDefault (insert newLayer model.layers)
                 }
-                    |> transitionFocusTo newFocus (angle |> Quantity.multiplyBy -1)
+                    |> transitionLayerFrom currentLayer.plane (ZipList.currentIndex model.layers)
 
             CtrlZ ->
                 let
@@ -397,13 +369,40 @@ update msg model =
                 }
 
 
-transitionFocusTo : WorldPoint -> Angle -> Model -> Model
-transitionFocusTo focus angle model =
+transitionLayerFrom : SourcePlane -> Int -> Model -> Model
+transitionLayerFrom previousPlane previousIndex model =
+    let
+        targetPlane =
+            model.layers
+                |> ZipList.current
+                |> .plane
+
+        angle =
+            previousPlane
+                |> SketchPlane3d.xAxis
+                |> Axis3d.direction
+                |> Direction3d.angleFrom
+                    (targetPlane
+                        |> SketchPlane3d.xAxis
+                        |> Axis3d.direction
+                    )
+                |> Quantity.multiplyBy
+                    (previousIndex
+                        - ZipList.currentIndex model.layers
+                        |> sign
+                        |> toFloat
+                    )
+
+        newFocus =
+            model.focus
+                |> Point3d.projectInto previousPlane
+                |> Point3d.on targetPlane
+    in
     { model
         | transition =
             Just
                 { fromFocus = model.focus
-                , toFocus = focus
+                , toFocus = newFocus
                 , fromAzimuth = model.azimuth
                 , toAzimuth = model.azimuth |> Quantity.plus angle
                 , at = 0
