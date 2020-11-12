@@ -2,4 +2,4 @@
 
 Mallarmé in 3D. A work in progress.
 
-View at https://baffalop.github.io/mallarme/dist/
+[**View here**](https://baffalop.github.io/mallarme/dist/)
