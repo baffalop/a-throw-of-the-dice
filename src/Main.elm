@@ -264,12 +264,44 @@ update msg model =
                                     |> ZipList.goToIndex layerIndex
                                     |> Maybe.withDefault model.layers
                         }
+
+                    currentPlane =
+                        ZipList.current model.layers
+                            |> .plane
+
+                    targetPlane =
+                        withLayerSet.layers
+                            |> ZipList.current
+                            |> .plane
+
+                    angle =
+                        if currentPlane == targetPlane then
+                            Angle.degrees 0
+
+                        else
+                            let
+                                multiplier =
+                                    if layerIndex - ZipList.currentIndex model.layers < 0 then
+                                        1
+
+                                    else
+                                        -1
+                            in
+                            currentPlane
+                                |> SketchPlane3d.xAxis
+                                |> Axis3d.direction
+                                |> Direction3d.angleFrom
+                                    (targetPlane
+                                        |> SketchPlane3d.xAxis
+                                        |> Axis3d.direction
+                                    )
+                                |> Quantity.multiplyBy multiplier
                 in
                 if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
                     withLayerSet
 
                 else
-                    withLayerSet |> transitionFocusTo newFocus model.azimuth
+                    withLayerSet |> transitionFocusTo newFocus angle
 
             AnimationTick delta ->
                 case model.transition of
@@ -349,11 +381,6 @@ update msg model =
                         model.focus
                             |> Point3d.projectInto currentLayer.plane
                             |> Point3d.on newPlane
-
-                    newAzimuth =
-                        angle
-                            |> Quantity.multiplyBy -1
-                            |> Quantity.plus model.azimuth
                 in
                 { model
                     | drawnRect = Nothing
@@ -361,7 +388,7 @@ update msg model =
                         shift model.layers
                             |> Maybe.withDefault (insert newLayer model.layers)
                 }
-                    |> transitionFocusTo newFocus newAzimuth
+                    |> transitionFocusTo newFocus (angle |> Quantity.multiplyBy -1)
 
             CtrlZ ->
                 let
@@ -377,14 +404,14 @@ update msg model =
 
 
 transitionFocusTo : WorldPoint -> Angle -> Model -> Model
-transitionFocusTo focus azimuth model =
+transitionFocusTo focus angle model =
     { model
         | transition =
             Just
                 { fromFocus = model.focus
                 , toFocus = focus
                 , fromAzimuth = model.azimuth
-                , toAzimuth = azimuth
+                , toAzimuth = model.azimuth |> Quantity.plus angle
                 , at = 0
                 }
     }
