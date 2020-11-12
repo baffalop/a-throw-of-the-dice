@@ -938,12 +938,12 @@ viewDistance =
 
 planeSpacing : Angle
 planeSpacing =
-    Angle.degrees 15
+    Angle.degrees 25
 
 
 planeFanAxis : Axis3d Length.Meters World
 planeFanAxis =
-    Axis3d.y |> Axis3d.translateBy (Vector3d.centimeters -30 0 0)
+    Axis3d.y |> Axis3d.translateBy (Vector3d.centimeters -32 0 0)
 
 
 layerHueSpacing =
