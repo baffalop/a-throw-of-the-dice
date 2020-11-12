@@ -47,7 +47,7 @@ main =
         { init = init
         , view =
             \model ->
-                { title = "A wee playabout"
+                { title = "One Toss of the Mouse"
                 , body = view model
                 }
         , update = update
