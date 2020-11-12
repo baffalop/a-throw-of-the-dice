@@ -331,13 +331,14 @@ update msg model =
                     currentLayer =
                         ZipList.current model.layers
 
-                    viewpointFacesAxis =
-                        planeFanAxis
-                            |> Axis3d.originPoint
-                            |> inFrontOf (makeViewpoint model |> Viewpoint3d.viewPlane)
+                    focusedPlaneFacesRight =
+                        model.layers
+                            |> ZipList.current
+                            |> .plane
+                            |> isFacingRightOf (makeViewpoint model)
 
                     direction =
-                        if viewpointFacesAxis then
+                        if focusedPlaneFacesRight then
                             key
 
                         else
