@@ -299,13 +299,13 @@ update msg model =
                     currentLayer =
                         ZipList.current model.layers
 
-                    planesAreFacingRight =
-                        ZipList.current model.layers
-                            |> .plane
-                            |> isFacingRightOf (makeViewpoint model)
+                    viewpointFacesAxis =
+                        planeFanAxis
+                            |> Axis3d.originPoint
+                            |> inFrontOf (makeViewpoint model |> Viewpoint3d.viewPlane)
 
                     direction =
-                        if planesAreFacingRight then
+                        if viewpointFacesAxis then
                             key
 
                         else
@@ -325,17 +325,20 @@ update msg model =
                                 , insert = ziplistInsertBefore
                                 }
 
-                    zVector =
-                        Vector3d.xyz zeroMeters zeroMeters (planeSpacing |> Quantity.multiplyBy multiplier)
+                    newPlane =
+                        currentLayer.plane
+                            |> SketchPlane3d.rotateAround planeFanAxis (planeSpacing |> Quantity.multiplyBy multiplier)
 
                     newLayer =
-                        { plane = currentLayer.plane |> SketchPlane3d.translateBy zVector
+                        { plane = newPlane
                         , rects = []
                         , hue = currentLayer.hue + (multiplier * layerHueSpacing) |> floor |> modBy 256 |> toFloat
                         }
 
                     newFocus =
-                        model.focus |> Point3d.translateBy zVector
+                        model.focus
+                            |> Point3d.projectInto currentLayer.plane
+                            |> Point3d.on newPlane
                 in
                 { model
                     | drawnRect = Nothing
@@ -423,10 +426,10 @@ viewSvg model =
 
         orderByDepth =
             if currentLayer.plane |> isFacingAwayFrom (Camera3d.viewpoint camera.camera) then
-                List.reverse
+                identity
 
             else
-                identity
+                List.reverse
 
         focusRect =
             ( Length.centimeters (toFloat screenWidth * 22 / 1000), Length.centimeters (toFloat screenHeight * 17 / 800) )
@@ -891,9 +894,14 @@ viewDistance =
     Length.centimeters 25
 
 
-planeSpacing : Length.Length
+planeSpacing : Angle
 planeSpacing =
-    Length.centimeters 7
+    Angle.degrees 15
+
+
+planeFanAxis : Axis3d Length.Meters World
+planeFanAxis =
+    Axis3d.y |> Axis3d.translateBy (Vector3d.centimeters -30 0 0)
 
 
 layerHueSpacing =
@@ -906,10 +914,6 @@ wheelCoefficient =
 
 screenMargins =
     10
-
-
-zeroMeters =
-    Length.meters 0
 
 
 
