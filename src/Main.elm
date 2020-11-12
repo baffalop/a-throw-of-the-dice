@@ -82,8 +82,10 @@ type alias DrawnRect =
 
 
 type alias Transition =
-    { from : WorldPoint
-    , to : WorldPoint
+    { fromFocus : WorldPoint
+    , toFocus : WorldPoint
+    , fromAzimuth : Angle
+    , toAzimuth : Angle
     , at : Float
     }
 
@@ -253,41 +255,43 @@ update msg model =
                     , elevation = model.elevation |> add deltaY
                 }
 
-            ClickedTo layerIndex newFocus ->
-                let
-                    withLayerSet =
-                        { model
-                            | layers =
-                                model.layers
-                                    |> ZipList.goToIndex layerIndex
-                                    |> Maybe.withDefault model.layers
-                        }
-                in
-                if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
-                    withLayerSet
+            ClickedTo layerIndex _ ->
+                if layerIndex == ZipList.currentIndex model.layers then
+                    model
 
                 else
-                    withLayerSet |> transitionFocusTo newFocus
+                    { model
+                        | layers =
+                            model.layers
+                                |> ZipList.goToIndex layerIndex
+                                |> Maybe.withDefault model.layers
+                    }
+                        |> transitionLayerFrom (ZipList.current model.layers |> .plane)
 
             AnimationTick delta ->
                 case model.transition of
                     Nothing ->
                         model
 
-                    Just ({ from, to } as transition) ->
+                    Just ({ fromFocus, toFocus, fromAzimuth, toAzimuth } as transition) ->
                         let
                             at =
                                 transition.at + (delta / Duration.inMilliseconds transitionDuration)
+
+                            easedAt =
+                                Ease.inOutCubic at
                         in
                         if at >= 1 then
                             { model
-                                | focus = to
+                                | focus = toFocus
+                                , azimuth = toAzimuth
                                 , transition = Nothing
                             }
 
                         else
                             { model
-                                | focus = Point3d.interpolateFrom from to <| Ease.inOutCubic at
+                                | focus = Point3d.interpolateFrom fromFocus toFocus easedAt
+                                , azimuth = Quantity.interpolateFrom fromAzimuth toAzimuth easedAt
                                 , transition = Just { transition | at = at }
                             }
 
@@ -299,17 +303,18 @@ update msg model =
                     currentLayer =
                         ZipList.current model.layers
 
-                    planesAreFacingRight =
-                        ZipList.current model.layers
+                    focusedPlaneFacesRight =
+                        model.layers
+                            |> ZipList.current
                             |> .plane
                             |> isFacingRightOf (makeViewpoint model)
 
                     direction =
-                        if planesAreFacingRight then
-                            key
+                        if focusedPlaneFacesRight then
+                            reverse key
 
                         else
-                            reverse key
+                            key
 
                     { multiplier, shift, insert } =
                         case direction of
@@ -325,17 +330,15 @@ update msg model =
                                 , insert = ziplistInsertBefore
                                 }
 
-                    zVector =
-                        Vector3d.xyz zeroMeters zeroMeters (planeSpacing |> Quantity.multiplyBy multiplier)
+                    newPlane =
+                        currentLayer.plane
+                            |> SketchPlane3d.rotateAround planeFanAxis (planeSpacing |> Quantity.multiplyBy multiplier)
 
                     newLayer =
-                        { plane = currentLayer.plane |> SketchPlane3d.translateBy zVector
+                        { plane = newPlane
                         , rects = []
                         , hue = currentLayer.hue + (multiplier * layerHueSpacing) |> floor |> modBy 256 |> toFloat
                         }
-
-                    newFocus =
-                        model.focus |> Point3d.translateBy zVector
                 in
                 { model
                     | drawnRect = Nothing
@@ -343,7 +346,7 @@ update msg model =
                         shift model.layers
                             |> Maybe.withDefault (insert newLayer model.layers)
                 }
-                    |> transitionFocusTo newFocus
+                    |> transitionLayerFrom currentLayer.plane
 
             CtrlZ ->
                 let
@@ -358,13 +361,40 @@ update msg model =
                 }
 
 
-transitionFocusTo : WorldPoint -> Model -> Model
-transitionFocusTo focus model =
+transitionLayerFrom : SourcePlane -> Model -> Model
+transitionLayerFrom previousPlane model =
+    let
+        targetPlane =
+            model.layers
+                |> ZipList.current
+                |> .plane
+
+        angle =
+            targetPlane
+                |> SketchPlane3d.xAxis
+                |> Axis3d.direction
+                |> Direction3d.projectInto SketchPlane3d.xz
+                |> Maybe.withDefault Direction2d.positiveX
+                |> Direction2d.angleFrom
+                    (previousPlane
+                        |> SketchPlane3d.xAxis
+                        |> Axis3d.direction
+                        |> Direction3d.projectInto SketchPlane3d.xz
+                        |> Maybe.withDefault Direction2d.positiveX
+                    )
+
+        newFocus =
+            model.focus
+                |> Point3d.projectInto previousPlane
+                |> Point3d.on targetPlane
+    in
     { model
         | transition =
             Just
-                { from = model.focus
-                , to = focus
+                { fromFocus = model.focus
+                , toFocus = newFocus
+                , fromAzimuth = model.azimuth
+                , toAzimuth = model.azimuth |> Quantity.plus angle
                 , at = 0
                 }
     }
@@ -423,10 +453,10 @@ viewSvg model =
 
         orderByDepth =
             if currentLayer.plane |> isFacingAwayFrom (Camera3d.viewpoint camera.camera) then
-                List.reverse
+                identity
 
             else
-                identity
+                List.reverse
 
         focusRect =
             ( Length.centimeters (toFloat screenWidth * 22 / 1000), Length.centimeters (toFloat screenHeight * 17 / 800) )
@@ -499,7 +529,7 @@ viewRect cameraGeometry behaviour rect =
     if Rectangle3d.vertices rect |> List.all (inFrontOf viewPlane) then
         let
             cornerRadius =
-                Length.centimeters 0.2
+                Length.centimeters 0.15
 
             path =
                 rect
@@ -738,7 +768,7 @@ rectFrom : SourcePoint -> SourcePoint -> PlaneRect
 rectFrom originPoint endPoint =
     let
         halfHeight =
-            Vector2d.centimeters 0 0.5
+            Vector2d.centimeters 0 0.6
 
         length =
             Vector2d.from originPoint endPoint
@@ -863,6 +893,11 @@ reverse key =
             Left
 
 
+sign : Int -> Int
+sign n =
+    n // abs n
+
+
 
 -- CONSTANTS
 
@@ -891,9 +926,14 @@ viewDistance =
     Length.centimeters 25
 
 
-planeSpacing : Length.Length
+planeSpacing : Angle
 planeSpacing =
-    Length.centimeters 7
+    Angle.degrees 25
+
+
+planeFanAxis : Axis3d Length.Meters World
+planeFanAxis =
+    Axis3d.y |> Axis3d.translateBy (Vector3d.centimeters -32 0 0)
 
 
 layerHueSpacing =
@@ -906,10 +946,6 @@ wheelCoefficient =
 
 screenMargins =
     10
-
-
-zeroMeters =
-    Length.meters 0
 
 
 
