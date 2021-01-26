@@ -6,12 +6,14 @@ import Basics.Extra exposing (..)
 import Browser
 import Browser.Events
 import Camera3d exposing (Camera3d)
+import Color
 import Css
 import Direction2d
 import Direction3d
 import Duration exposing (Duration)
 import Ease
 import Frame2d
+import HSLuv exposing (HSLuv)
 import Html exposing (Html)
 import Html.Styled as Styled
 import Html.Styled.Attributes exposing (css)
@@ -560,7 +562,7 @@ viewFocusRect cameraGeometry hue rect =
     in
     SvgStyled.path
         [ SvgAttr.d <| SvgPath.toString [ path ]
-        , SvgAttr.stroke <| "hsl(" ++ String.fromFloat hue ++ ", 60%, 50%"
+        , SvgAttr.stroke <| hsluvToSvgColor hue 0.7 0.5
         , SvgAttr.strokeWidth "2"
         , SvgAttr.strokeDasharray "8 6"
         , SvgAttr.fillOpacity "0"
@@ -863,6 +865,39 @@ reverse key =
             Left
 
 
+hsluvToCssColor : Float -> Float -> Float -> Css.Color
+hsluvToCssColor h s l =
+    let
+        { red, green, blue } =
+            HSLuv.hsluv
+                { hue = h / 255
+                , saturation = s
+                , lightness = l
+                , alpha = 1
+                }
+                |> HSLuv.toRgba
+
+        toInt =
+            (*) 255 >> floor
+    in
+    Css.rgb
+        (toInt red)
+        (toInt green)
+        (toInt blue)
+
+
+hsluvToSvgColor : Float -> Float -> Float -> String
+hsluvToSvgColor h s l =
+    HSLuv.hsluv
+        { hue = h / 255
+        , saturation = s
+        , lightness = l
+        , alpha = 1
+        }
+        |> HSLuv.toColor
+        |> Color.toCssString
+
+
 
 -- CONSTANTS
 
@@ -870,9 +905,9 @@ reverse key =
 theme =
     { dark = Css.hex "13151f"
     , accent = Css.hex "9e3354"
-    , light = \hue -> Css.hsl hue 0.3 0.6
-    , lighter = \hue -> Css.hsl hue 0.7 0.75
-    , initialLayerHue = 130
+    , light = \hue -> hsluvToCssColor hue 0.55 0.65
+    , lighter = \hue -> hsluvToCssColor hue 0.65 0.75
+    , initialLayerHue = 90
     }
 
 
