@@ -906,8 +906,8 @@ hsluvToSvgColor h s l =
 theme =
     { dark = Css.hex "13151f"
     , accent = Css.hex "9e3354"
-    , light = \hue -> hsluvToCssColor hue 0.55 0.65
-    , lighter = \hue -> hsluvToCssColor hue 0.65 0.75
+    , light = \hue -> hsluvToCssColor hue 0.5 0.7
+    , lighter = \hue -> hsluvToCssColor hue 0.7 0.8
     , initialLayerHue = 90
     }
 
