@@ -256,8 +256,8 @@ update msg model =
                         Angle.inDegrees >> (+) (delta * wheelCoefficient) >> Angle.degrees
                 in
                 { model
-                    | azimuth = model.azimuth |> add deltaX
-                    , elevation = model.elevation |> add deltaY
+                    | azimuth = add deltaX model.azimuth
+                    , elevation = add deltaY model.elevation
                 }
 
             ClickedTo layerIndex newFocus ->
