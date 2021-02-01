@@ -73,7 +73,6 @@ type alias Model =
 type alias Layer =
     { plane : SourcePlane
     , rects : List Rect
-    , hue : Float
     }
 
 
@@ -126,7 +125,6 @@ init { devicePixelRatio, screenDimensions } =
         ZipList.singleton
             { plane = sourcePlane
             , rects = []
-            , hue = theme.initialLayerHue
             }
     , centrePoint = centrePoint
     , focus = centrePoint |> Point3d.on sourcePlane
@@ -338,7 +336,6 @@ update msg model =
                     newLayer =
                         { plane = currentLayer.plane |> SketchPlane3d.translateBy zVector
                         , rects = []
-                        , hue = currentLayer.hue + (multiplier * layerHueSpacing) |> floor |> modBy 256 |> toFloat
                         }
 
                     newFocus =
@@ -465,7 +462,7 @@ viewSvg model =
                     index
             )
         |> orderByDepth
-        |> (::) (viewFocusRect camera currentLayer.hue focusRect)
+        |> (::) (viewFocusRect camera currentIndex focusRect)
         |> SvgStyled.svg
             (mouseEvents
                 ++ [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
@@ -476,13 +473,16 @@ viewSvg model =
 
 
 viewLayer : CameraGeometry -> Maybe DrawnRect -> Int -> Layer -> SvgStyled.Svg Msg
-viewLayer camera drawnRect index { plane, rects, hue } =
+viewLayer camera drawnRect index { plane, rects } =
     let
         maybeAppendDrawnRect =
             drawnRect
                 |> Maybe.andThen (.rect >> Rectangle3d.on plane >> viewRect camera Inert)
                 |> Maybe.map (::)
                 |> Maybe.withDefault identity
+
+        hue =
+            hueFromIndex index
     in
     rects
         |> List.filterMap (viewRect camera (Focusable index <| theme.lighter hue))
@@ -539,8 +539,8 @@ viewRect cameraGeometry behaviour rect =
         Nothing
 
 
-viewFocusRect : CameraGeometry -> Float -> Rect -> SvgStyled.Svg msg
-viewFocusRect cameraGeometry hue rect =
+viewFocusRect : CameraGeometry -> Int -> Rect -> SvgStyled.Svg msg
+viewFocusRect cameraGeometry index rect =
     let
         viewPlane =
             cameraGeometry.camera
@@ -567,7 +567,7 @@ viewFocusRect cameraGeometry hue rect =
     in
     SvgStyled.path
         [ SvgAttr.d <| SvgPath.toString [ path ]
-        , SvgAttr.stroke <| hsluvToSvgColor hue 0.7 0.5
+        , SvgAttr.stroke <| hsluvToSvgColor (hueFromIndex index) 0.7 0.5
         , SvgAttr.strokeWidth "2"
         , SvgAttr.strokeDasharray "8 6"
         , SvgAttr.fillOpacity "0"
@@ -826,6 +826,60 @@ makeViewpoint { focus, azimuth, elevation } =
 
 
 
+-- COLOURS
+
+
+theme =
+    { dark = Css.hex "13151f"
+    , accent = Css.hex "9e3354"
+    , light = \hue -> hsluvToCssColor hue 0.5 0.7
+    , lighter = \hue -> hsluvToCssColor hue 0.7 0.8
+    , initialLayerHue = 90
+    }
+
+
+hsluvToCssColor : Float -> Float -> Float -> Css.Color
+hsluvToCssColor h s l =
+    let
+        { red, green, blue } =
+            HSLuv.hsluv
+                { hue = h / 255
+                , saturation = s
+                , lightness = l
+                , alpha = 1
+                }
+                |> HSLuv.toRgba
+
+        toInt =
+            (*) 255 >> floor
+    in
+    Css.rgb
+        (toInt red)
+        (toInt green)
+        (toInt blue)
+
+
+hsluvToSvgColor : Float -> Float -> Float -> String
+hsluvToSvgColor h s l =
+    HSLuv.hsluv
+        { hue = h / 255
+        , saturation = s
+        , lightness = l
+        , alpha = 1
+        }
+        |> HSLuv.toColor
+        |> Color.toCssString
+
+
+hueFromIndex : Int -> Float
+hueFromIndex i =
+    theme.initialLayerHue
+        |> (+) (i * layerHueSpacing)
+        |> modBy 256
+        |> toFloat
+
+
+
 -- HELPERS
 
 
@@ -870,50 +924,8 @@ reverse key =
             Left
 
 
-hsluvToCssColor : Float -> Float -> Float -> Css.Color
-hsluvToCssColor h s l =
-    let
-        { red, green, blue } =
-            HSLuv.hsluv
-                { hue = h / 255
-                , saturation = s
-                , lightness = l
-                , alpha = 1
-                }
-                |> HSLuv.toRgba
-
-        toInt =
-            (*) 255 >> floor
-    in
-    Css.rgb
-        (toInt red)
-        (toInt green)
-        (toInt blue)
-
-
-hsluvToSvgColor : Float -> Float -> Float -> String
-hsluvToSvgColor h s l =
-    HSLuv.hsluv
-        { hue = h / 255
-        , saturation = s
-        , lightness = l
-        , alpha = 1
-        }
-        |> HSLuv.toColor
-        |> Color.toCssString
-
-
 
 -- CONSTANTS
-
-
-theme =
-    { dark = Css.hex "13151f"
-    , accent = Css.hex "9e3354"
-    , light = \hue -> hsluvToCssColor hue 0.5 0.7
-    , lighter = \hue -> hsluvToCssColor hue 0.7 0.8
-    , initialLayerHue = 90
-    }
 
 
 verticalFieldOfView : Angle
