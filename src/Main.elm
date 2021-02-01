@@ -126,8 +126,8 @@ init { devicePixelRatio, screenDimensions } =
     , centrePoint = centrePoint
     , focus = centrePoint |> Point3d.on sourcePlane
     , transition = Nothing
-    , azimuth = Angle.degrees 90
-    , elevation = Angle.degrees 0
+    , azimuth = Angle.degrees -90
+    , elevation = Angle.degrees 180
     , drawnRect = Nothing
     , screenDimensions = screenDimensions
     , devicePixelRatio = devicePixelRatio
@@ -142,7 +142,7 @@ initLayers sourcePlane =
             let
                 zVector =
                     planeSpacing
-                        |> Quantity.multiplyBy (toFloat index)
+                        |> Quantity.multiplyBy (toFloat index * -1)
                         |> Vector3d.xyz zeroMeters zeroMeters
 
                 plane =
@@ -470,10 +470,10 @@ viewSvg model =
 
         orderByDepth =
             if currentLayer.plane |> isFacingAwayFrom (Camera3d.viewpoint camera.camera) then
-                List.reverse
+                identity
 
             else
-                identity
+                List.reverse
 
         focusRect =
             ( Length.centimeters (toFloat screenWidth * 22 / 1000), Length.centimeters (toFloat screenHeight * 17 / 800) )
