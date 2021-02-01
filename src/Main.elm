@@ -228,22 +228,27 @@ update msg model =
                         }
 
             MouseUp ->
-                let
-                    currentLayer =
-                        ZipList.current model.layers
-                in
-                { model
-                    | drawnRect = Nothing
-                    , layers =
-                        ZipList.replace
-                            { currentLayer
-                                | rects =
-                                    model.drawnRect
-                                        |> Maybe.map (.rect >> Rectangle3d.on currentLayer.plane >> flip (::) currentLayer.rects)
-                                        |> Maybe.withDefault currentLayer.rects
-                            }
-                            model.layers
-                }
+                case model.drawnRect of
+                    Nothing ->
+                        model
+
+                    Just drawnRect ->
+                        let
+                            currentLayer =
+                                ZipList.current model.layers
+                        in
+                        { model
+                            | drawnRect = Nothing
+                            , layers =
+                                ZipList.replace
+                                    { currentLayer
+                                        | rects =
+                                            drawnRect.rect
+                                                |> Rectangle3d.on currentLayer.plane
+                                                |> flip (::) currentLayer.rects
+                                    }
+                                    model.layers
+                        }
 
             Wheel deltaX deltaY ->
                 let
