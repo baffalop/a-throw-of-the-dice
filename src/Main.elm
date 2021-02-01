@@ -28,6 +28,7 @@ import LineSegment3d.Projection
 import List.Extra
 import Path.LowLevel as SvgPath exposing (DrawTo(..), Mode(..), MoveTo(..))
 import Pixels
+import Poem
 import Point2d exposing (Point2d)
 import Point3d exposing (Point3d)
 import Point3d.Projection
@@ -121,11 +122,7 @@ init { devicePixelRatio, screenDimensions } =
                 (toFloat screenWidth * (13.2 / 1000))
                 (toFloat screenHeight * (10 / 800))
     in
-    { layers =
-        ZipList.singleton
-            { plane = sourcePlane
-            , rects = []
-            }
+    { layers = initLayers sourcePlane <| Poem.pages
     , centrePoint = centrePoint
     , focus = centrePoint |> Point3d.on sourcePlane
     , transition = Nothing
@@ -136,6 +133,52 @@ init { devicePixelRatio, screenDimensions } =
     , devicePixelRatio = devicePixelRatio
     }
         |> withNoCmd
+
+
+initLayers : SourcePlane -> List (List Poem.Word) -> ZipList Layer
+initLayers sourcePlane =
+    List.indexedMap
+        (\index page ->
+            let
+                zVector =
+                    planeSpacing
+                        |> Quantity.multiplyBy (toFloat index)
+                        |> Vector3d.xyz zeroMeters zeroMeters
+
+                plane =
+                    sourcePlane |> SketchPlane3d.translateBy zVector
+            in
+            { plane = plane
+            , rects = List.map (makeWordRect >> Rectangle3d.on plane) page
+            }
+        )
+        >> ZipList.fromList
+        >> Maybe.withDefault
+            (ZipList.singleton
+                { plane = sourcePlane
+                , rects = []
+                }
+            )
+
+
+makeWordRect : Poem.Word -> PlaneRect
+makeWordRect { x, y, width, height } =
+    let
+        scaling =
+            1
+
+        ( floatX, floatY ) =
+            ( toFloat x * scaling, toFloat y * scaling )
+
+        ( floatWidth, floatHeight ) =
+            ( toFloat width * scaling, toFloat height * scaling )
+    in
+    Rectangle2d.with
+        { x1 = Length.millimeters floatX
+        , y1 = Length.millimeters floatY
+        , x2 = Length.millimeters (floatX + floatWidth)
+        , y2 = Length.millimeters (floatY + floatHeight)
+        }
 
 
 subscriptions : Model -> Sub Msg
@@ -930,7 +973,7 @@ reverse key =
 
 verticalFieldOfView : Angle
 verticalFieldOfView =
-    Angle.degrees 50
+    Angle.degrees 80
 
 
 transitionDuration : Duration
