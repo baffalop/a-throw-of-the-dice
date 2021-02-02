@@ -470,13 +470,13 @@ viewSvg model =
 
         orderByDepth : List ( a, Layer ) -> List ( a, Layer )
         orderByDepth =
-            List.sortBy
-                (Tuple.second
-                    >> .plane
-                    >> SketchPlane3d.originPoint
-                    >> Point3d.distanceFrom (Camera3d.viewpoint camera.camera |> Viewpoint3d.eyePoint)
-                    >> Length.inMeters
-                    >> (*) -1
+            Quantity.sortBy
+                (\( _, layer ) ->
+                    Camera3d.viewpoint camera.camera
+                        |> Viewpoint3d.eyePoint
+                        |> Point3d.signedDistanceFrom (SketchPlane3d.toPlane layer.plane)
+                        |> Quantity.abs
+                        |> Quantity.negate
                 )
 
         focusRect =
