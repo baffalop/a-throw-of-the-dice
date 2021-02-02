@@ -1,7 +1,7 @@
 module Poem exposing (..)
 
 
-type alias Word =
+type alias Span =
     { text : String
     , x : Int
     , y : Int
@@ -10,6 +10,7 @@ type alias Word =
     }
 
 
+pages : List (List Span)
 pages =
     [ []
     , [ { text = "A THROW OF THE DICE", x = 113, y = 194, width = 390, height = 41 } ]

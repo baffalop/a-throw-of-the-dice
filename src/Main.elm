@@ -135,7 +135,7 @@ init { devicePixelRatio, screenDimensions } =
         |> withNoCmd
 
 
-initLayers : SourcePlane -> List (List Poem.Word) -> ZipList Layer
+initLayers : SourcePlane -> List (List Poem.Span) -> ZipList Layer
 initLayers sourcePlane =
     List.indexedMap
         (\index page ->
@@ -149,7 +149,7 @@ initLayers sourcePlane =
                     sourcePlane |> SketchPlane3d.translateBy zVector
             in
             { plane = plane
-            , rects = List.map (makeWordRect >> Rectangle3d.on plane) page
+            , rects = List.map (spanToRect >> Rectangle3d.on plane) page
             }
         )
         >> ZipList.fromList
@@ -161,8 +161,8 @@ initLayers sourcePlane =
             )
 
 
-makeWordRect : Poem.Word -> PlaneRect
-makeWordRect { x, y, width, height } =
+spanToRect : Poem.Span -> PlaneRect
+spanToRect { x, y, width, height } =
     let
         ( floatX, floatY ) =
             ( toFloat x * scaling, toFloat y * scaling )
