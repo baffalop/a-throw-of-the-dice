@@ -122,7 +122,7 @@ init { devicePixelRatio, screenDimensions } =
                 (toFloat screenWidth * (13.2 / 1000))
                 (toFloat screenHeight * (10 / 800))
     in
-    { layers = initLayers sourcePlane <| List.map Poem.mergePhrases Poem.pages
+    { layers = initLayers sourcePlane <| Poem.pair Poem.pages
     , centrePoint = centrePoint
     , focus = centrePoint |> Point3d.on sourcePlane
     , transition = Nothing
