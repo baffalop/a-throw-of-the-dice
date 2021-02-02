@@ -164,9 +164,6 @@ initLayers sourcePlane =
 makeWordRect : Poem.Word -> PlaneRect
 makeWordRect { x, y, width, height } =
     let
-        scaling =
-            1
-
         ( floatX, floatY ) =
             ( toFloat x * scaling, toFloat y * scaling )
 
@@ -554,9 +551,6 @@ viewRect cameraGeometry behaviour rect =
     in
     if Rectangle3d.vertices rect |> List.all (inFrontOf viewPlane) then
         let
-            cornerRadius =
-                Length.centimeters 0.2
-
             path =
                 rect
                     |> Rectangle3d.edges
@@ -979,7 +973,7 @@ reverse key =
 
 verticalFieldOfView : Angle
 verticalFieldOfView =
-    Angle.degrees 80
+    Angle.degrees 60
 
 
 transitionDuration : Duration
@@ -994,7 +988,15 @@ viewDistance =
 
 planeSpacing : Length.Length
 planeSpacing =
-    Length.centimeters 7
+    Length.centimeters 12
+
+
+scaling =
+    0.4
+
+
+cornerRadius =
+    Length.centimeters 0.1
 
 
 layerHueSpacing =
