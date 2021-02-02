@@ -775,3 +775,40 @@ paginate =
         , "EXCEPT"
         , "cold"
         ]
+
+
+mergePhrases : List Word -> List Word
+mergePhrases inputWords =
+    let
+        ( finalWord, result ) =
+            List.foldl
+                (\word ( maybeBuiltWord, accum ) ->
+                    case maybeBuiltWord of
+                        Nothing ->
+                            ( Just word, [] )
+
+                        Just builtWord ->
+                            if
+                                (builtWord.height /= word.height)
+                                    || (builtWord.y /= word.y)
+                            then
+                                ( Just word, builtWord :: accum )
+
+                            else
+                                ( Just
+                                    { builtWord
+                                        | text = builtWord.text ++ " " ++ word.text
+                                        , width = word.width + (word.x - builtWord.x)
+                                    }
+                                , accum
+                                )
+                )
+                ( Nothing, [] )
+                inputWords
+    in
+    case finalWord of
+        Nothing ->
+            List.reverse result
+
+        Just word ->
+            List.reverse <| word :: result
