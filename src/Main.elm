@@ -468,12 +468,16 @@ viewSvg model =
         currentIndex =
             ZipList.currentIndex model.layers
 
+        orderByDepth : List ( a, Layer ) -> List ( a, Layer )
         orderByDepth =
-            if currentLayer.plane |> isFacingAwayFrom (Camera3d.viewpoint camera.camera) then
-                identity
-
-            else
-                List.reverse
+            List.sortBy
+                (Tuple.second
+                    >> .plane
+                    >> SketchPlane3d.originPoint
+                    >> Point3d.distanceFrom (Camera3d.viewpoint camera.camera |> Viewpoint3d.eyePoint)
+                    >> Length.inMeters
+                    >> (*) -1
+                )
 
         focusRect =
             ( Length.centimeters (toFloat screenWidth * 22 / 1000), Length.centimeters (toFloat screenHeight * 17 / 800) )
@@ -493,8 +497,10 @@ viewSvg model =
     in
     model.layers
         |> ZipList.toList
-        |> List.indexedMap
-            (\index ->
+        |> List.indexedMap Tuple.pair
+        |> orderByDepth
+        |> List.map
+            (\( index, layer ) ->
                 viewLayer camera
                     (if index == currentIndex then
                         model.drawnRect
@@ -503,8 +509,8 @@ viewSvg model =
                         Nothing
                     )
                     index
+                    layer
             )
-        |> orderByDepth
         |> (::) (viewFocusRect camera currentIndex focusRect)
         |> SvgStyled.svg
             (mouseEvents
