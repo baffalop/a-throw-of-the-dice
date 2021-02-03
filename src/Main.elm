@@ -1010,7 +1010,7 @@ cornerRadius =
 
 
 layerHueSpacing =
-    40
+    30
 
 
 wheelCoefficient =
