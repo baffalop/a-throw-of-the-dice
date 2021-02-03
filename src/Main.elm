@@ -496,8 +496,8 @@ viewSvg model =
                     index
                     layer
             )
-        |> List.sortBy (negate << Tuple.first)
-        |> List.map Tuple.second
+        |> List.sortBy (negate << .depth)
+        |> List.map .svg
         |> (::) (viewFocusRect camera currentIndex focusRect)
         |> SvgStyled.svg
             (mouseEvents
@@ -508,7 +508,7 @@ viewSvg model =
             )
 
 
-viewLayer : CameraGeometry -> Maybe DrawnRect -> Int -> Layer -> Maybe ( Float, SvgStyled.Svg Msg )
+viewLayer : CameraGeometry -> Maybe DrawnRect -> Int -> Layer -> Maybe { depth : Float, svg : SvgStyled.Svg Msg }
 viewLayer camera drawnRect index { plane, rects } =
     let
         depth =
@@ -536,18 +536,19 @@ viewLayer camera drawnRect index { plane, rects } =
 
             hue =
                 hueFromIndex index
+
+            svg =
+                rects
+                    |> List.filterMap (viewRect camera (Focusable index <| theme.lighter hue fade))
+                    |> maybeAppendDrawnRect
+                    |> SvgStyled.g
+                        [ SvgAttr.css
+                            [ Css.fill <| theme.light hue fade
+                            , Css.margin <| Css.px 0
+                            ]
+                        ]
         in
-        rects
-            |> List.filterMap (viewRect camera (Focusable index <| theme.lighter hue fade))
-            |> maybeAppendDrawnRect
-            |> SvgStyled.g
-                [ SvgAttr.css
-                    [ Css.fill <| theme.light hue fade
-                    , Css.margin <| Css.px 0
-                    ]
-                ]
-            |> Tuple.pair depth
-            |> Just
+        Just { depth = depth, svg = svg }
 
 
 viewRect : CameraGeometry -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
