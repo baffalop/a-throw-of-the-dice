@@ -983,7 +983,7 @@ reverse key =
 
 verticalFieldOfView : Angle
 verticalFieldOfView =
-    Angle.degrees 60
+    Angle.degrees 70
 
 
 transitionDuration : Duration
@@ -993,7 +993,7 @@ transitionDuration =
 
 viewDistance : Length.Length
 viewDistance =
-    Length.centimeters 25
+    Length.centimeters 20
 
 
 planeSpacing : Length.Length
