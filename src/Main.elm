@@ -465,17 +465,6 @@ viewSvg model =
         currentIndex =
             ZipList.currentIndex model.layers
 
-        orderByDepth : List ( a, Layer ) -> List ( a, Layer )
-        orderByDepth =
-            Quantity.sortBy
-                (\( _, layer ) ->
-                    Camera3d.viewpoint camera.camera
-                        |> Viewpoint3d.eyePoint
-                        |> Point3d.signedDistanceFrom (SketchPlane3d.toPlane layer.plane)
-                        |> Quantity.abs
-                        |> Quantity.negate
-                )
-
         focusRect =
             ( Length.centimeters (toFloat screenWidth * 22 / 1000), Length.centimeters (toFloat screenHeight * 17 / 800) )
                 |> Rectangle2d.centeredOn (Frame2d.atPoint model.centrePoint)
@@ -495,8 +484,7 @@ viewSvg model =
     model.layers
         |> ZipList.toList
         |> List.indexedMap Tuple.pair
-        |> orderByDepth
-        |> List.map
+        |> List.filterMap
             (\( index, layer ) ->
                 viewLayer camera
                     (if index == currentIndex then
@@ -508,6 +496,8 @@ viewSvg model =
                     index
                     layer
             )
+        |> List.sortBy (negate << Tuple.first)
+        |> List.map Tuple.second
         |> (::) (viewFocusRect camera currentIndex focusRect)
         |> SvgStyled.svg
             (mouseEvents
@@ -518,27 +508,46 @@ viewSvg model =
             )
 
 
-viewLayer : CameraGeometry -> Maybe DrawnRect -> Int -> Layer -> SvgStyled.Svg Msg
+viewLayer : CameraGeometry -> Maybe DrawnRect -> Int -> Layer -> Maybe ( Float, SvgStyled.Svg Msg )
 viewLayer camera drawnRect index { plane, rects } =
     let
-        maybeAppendDrawnRect =
-            drawnRect
-                |> Maybe.andThen (.rect >> Rectangle3d.on plane >> viewRect camera Inert)
-                |> Maybe.map (::)
-                |> Maybe.withDefault identity
+        depth =
+            Camera3d.viewpoint camera.camera
+                |> Viewpoint3d.eyePoint
+                |> Point3d.signedDistanceFrom (SketchPlane3d.toPlane plane)
+                |> Length.inMeters
+                |> abs
 
-        hue =
-            hueFromIndex index
+        fade =
+            (1.4 - depth * 1.3)
+                |> clamp 0 1
+                |> sqrt
     in
-    rects
-        |> List.filterMap (viewRect camera (Focusable index <| theme.lighter hue))
-        |> maybeAppendDrawnRect
-        |> SvgStyled.g
-            [ SvgAttr.css
-                [ Css.fill <| theme.light hue
-                , Css.margin <| Css.px 0
+    if fade == 0 then
+        Nothing
+
+    else
+        let
+            maybeAppendDrawnRect =
+                drawnRect
+                    |> Maybe.andThen (.rect >> Rectangle3d.on plane >> viewRect camera Inert)
+                    |> Maybe.map (::)
+                    |> Maybe.withDefault identity
+
+            hue =
+                hueFromIndex index
+        in
+        rects
+            |> List.filterMap (viewRect camera (Focusable index <| theme.lighter hue fade))
+            |> maybeAppendDrawnRect
+            |> SvgStyled.g
+                [ SvgAttr.css
+                    [ Css.fill <| theme.light hue fade
+                    , Css.margin <| Css.px 0
+                    ]
                 ]
-            ]
+            |> Tuple.pair depth
+            |> Just
 
 
 viewRect : CameraGeometry -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
@@ -875,8 +884,8 @@ makeViewpoint { focus, azimuth, elevation } =
 theme =
     { dark = Css.hex "13151f"
     , accent = Css.hex "9e3354"
-    , light = \hue -> hsluvToCssColor hue 0.5 0.7
-    , lighter = \hue -> hsluvToCssColor hue 0.7 0.8
+    , light = \hue fade -> hsluvToCssColor hue (0.3 * fade + 0.2) (0.6 * fade + 0.1)
+    , lighter = \hue fade -> hsluvToCssColor hue (0.3 * fade + 0.3) (0.7 * fade + 0.1)
     , initialLayerHue = 90
     }
 
