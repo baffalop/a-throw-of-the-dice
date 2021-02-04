@@ -73,7 +73,13 @@ type alias Model =
 
 type alias Layer =
     { plane : SourcePlane
-    , rects : List Rect
+    , spans : List Span
+    }
+
+
+type alias Span =
+    { text : Maybe String
+    , rect : Rect
     }
 
 
@@ -136,7 +142,7 @@ init { devicePixelRatio, screenDimensions } =
 
 
 initLayers : SourcePlane -> List (List Poem.Span) -> ZipList Layer
-initLayers sourcePlane =
+initLayers originPlane =
     List.indexedMap
         (\index page ->
             let
@@ -146,23 +152,23 @@ initLayers sourcePlane =
                         |> Vector3d.xyz zeroMeters zeroMeters
 
                 plane =
-                    sourcePlane |> SketchPlane3d.translateBy zVector
+                    originPlane |> SketchPlane3d.translateBy zVector
             in
             { plane = plane
-            , rects = List.map (spanToRect >> Rectangle3d.on plane) page
+            , spans = List.map (spanToSpan plane) page
             }
         )
         >> ZipList.fromList
         >> Maybe.withDefault
             (ZipList.singleton
-                { plane = sourcePlane
-                , rects = []
+                { plane = originPlane
+                , spans = []
                 }
             )
 
 
-spanToRect : Poem.Span -> PlaneRect
-spanToRect { x, y, width, height } =
+spanToSpan : SourcePlane -> Poem.Span -> Span
+spanToSpan plane { x, y, width, height, text } =
     let
         ( floatX, floatY ) =
             ( toFloat x * scaling, toFloat y * scaling )
@@ -176,6 +182,8 @@ spanToRect { x, y, width, height } =
         , x2 = Length.millimeters (floatX + floatWidth)
         , y2 = Length.millimeters (floatY + floatHeight)
         }
+        |> Rectangle3d.on plane
+        |> Span (Just text)
 
 
 subscriptions : Model -> Sub Msg
@@ -280,10 +288,11 @@ update msg model =
                             , layers =
                                 ZipList.replace
                                     { currentLayer
-                                        | rects =
+                                        | spans =
                                             drawnRect.rect
                                                 |> Rectangle3d.on currentLayer.plane
-                                                |> flip (::) currentLayer.rects
+                                                |> Span Nothing
+                                                |> flip (::) currentLayer.spans
                                     }
                                     model.layers
                         }
@@ -375,7 +384,7 @@ update msg model =
 
                     newLayer =
                         { plane = currentLayer.plane |> SketchPlane3d.translateBy zVector
-                        , rects = []
+                        , spans = []
                         }
 
                     newFocus =
@@ -397,7 +406,7 @@ update msg model =
                 { model
                     | layers =
                         ZipList.replace
-                            { currentLayer | rects = List.drop 1 currentLayer.rects }
+                            { currentLayer | spans = List.drop 1 currentLayer.spans }
                             model.layers
                 }
 
@@ -509,7 +518,7 @@ viewSvg model =
 
 
 viewLayer : CameraGeometry -> Maybe DrawnRect -> Int -> Layer -> Maybe { depth : Float, svg : SvgStyled.Svg Msg }
-viewLayer camera drawnRect index { plane, rects } =
+viewLayer camera drawnRect index { plane, spans } =
     let
         depth =
             Camera3d.viewpoint camera.camera
@@ -538,8 +547,8 @@ viewLayer camera drawnRect index { plane, rects } =
                 hueFromIndex index
 
             svg =
-                rects
-                    |> List.filterMap (viewRect camera (Focusable index <| theme.lighter hue fade))
+                spans
+                    |> List.filterMap (.rect >> viewRect camera (Focusable index <| theme.lighter hue fade))
                     |> maybeAppendDrawnRect
                     |> SvgStyled.g
                         [ SvgAttr.css
