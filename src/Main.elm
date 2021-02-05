@@ -480,8 +480,12 @@ viewHovered : CameraGeometry -> ZipList Layer -> Maybe ( Int, Int ) -> Styled.Ht
 viewHovered { camera, screenRect } layers =
     let
         getSpan ( layerIndex, index ) =
-            ZipList.goToIndex layerIndex layers
-                |> Maybe.andThen (ZipList.current >> .spans >> List.Extra.getAt index)
+            if abs (ZipList.currentIndex layers - layerIndex) > 1 then
+                Nothing
+
+            else
+                ZipList.goToIndex layerIndex layers
+                    |> Maybe.andThen (ZipList.current >> .spans >> List.Extra.getAt index)
 
         unwrap span =
             Maybe.map (\text -> { rect = span.rect, text = text }) span.text
