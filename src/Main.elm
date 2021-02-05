@@ -512,6 +512,7 @@ viewHovered { camera, screenRect } layers =
                         , Css.backgroundColor theme.accent
                         , Css.color theme.dark
                         , Css.fontFamilies [ "Fira Code", "monospace" ]
+                        , Css.pointerEvents Css.none
                         ]
                     ]
                     [ Styled.text text ]
