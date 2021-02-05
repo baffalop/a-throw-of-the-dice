@@ -411,7 +411,7 @@ tickMomentum delta model =
                     ( momentumX * deltaDecay, momentumY * deltaDecay )
 
                 threshold =
-                    0.5
+                    0.2
             in
             { model
                 | drag =
