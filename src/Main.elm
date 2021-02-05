@@ -65,7 +65,7 @@ type alias Model =
     , transition : Maybe Transition
     , azimuth : Angle
     , elevation : Angle
-    , drawnRect : Maybe DrawnRect
+    , movement : Movement
     , tooltip : Maybe { text : String, mouseX : Float, mouseY : Float }
     , screenDimensions : ( Int, Int )
     , devicePixelRatio : Float
@@ -112,6 +112,17 @@ type Msg
     | NoOp
 
 
+type Movement
+    = Stationary
+    | Momentum Float Float
+    | Grabbed
+        { lastX : Float
+        , lastY : Float
+        , x : Float
+        , y : Float
+        }
+
+
 type ArrowKey
     = Left
     | Right
@@ -137,7 +148,7 @@ init { devicePixelRatio, screenDimensions } =
     , transition = Nothing
     , azimuth = Angle.degrees -90
     , elevation = Angle.degrees 180
-    , drawnRect = Nothing
+    , movement = Stationary
     , tooltip = Nothing
     , screenDimensions = screenDimensions
     , devicePixelRatio = devicePixelRatio
@@ -191,7 +202,7 @@ spanToSpan plane { x, y, width, height, text } =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions { transition } =
+subscriptions { transition, movement } =
     Sub.batch
         [ Browser.Events.onKeyDown <|
             Decode.oneOf
@@ -199,12 +210,17 @@ subscriptions { transition } =
                 , arrowKeyDecoder ArrowKeyPressed
                 ]
         , Browser.Events.onResize WindowResize
-        , case transition of
-            Nothing ->
-                Sub.none
-
-            Just _ ->
+        , case movement of
+            Momentum _ _ ->
                 Browser.Events.onAnimationFrameDelta AnimationTick
+
+            _ ->
+                case transition of
+                    Just _ ->
+                        Browser.Events.onAnimationFrameDelta AnimationTick
+
+                    Nothing ->
+                        Sub.none
         ]
 
 
@@ -244,66 +260,43 @@ update msg model =
                 model
 
             MouseDown x y ->
-                let
-                    currentLayer =
-                        ZipList.current model.layers
-                in
                 { model
-                    | drawnRect =
-                        ( x, y )
-                            |> raycastTo currentLayer.plane (makeCameraGeometry model) model.devicePixelRatio
-                            |> Maybe.map
-                                (\point ->
-                                    { originPoint = point
-                                    , rect = rectFrom point point
-                                    }
-                                )
+                    | movement = Grabbed { x = x, y = y, lastX = x, lastY = y }
+                    , tooltip = Nothing
                 }
 
             MouseMove x y ->
                 let
-                    currentLayer =
-                        ZipList.current model.layers
+                    withMappedTooltip =
+                        { model | tooltip = Maybe.map (\popover -> { popover | mouseX = x, mouseY = y }) model.tooltip }
                 in
-                { model
-                    | tooltip =
-                        Maybe.map
-                            (\popover -> { popover | mouseX = x, mouseY = y })
-                            model.tooltip
-                    , drawnRect =
-                        Maybe.map2 (\rect endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
-                            model.drawnRect
-                            (( x, y ) |> raycastTo currentLayer.plane (makeCameraGeometry model) model.devicePixelRatio)
-                }
+                case model.movement of
+                    Grabbed grab ->
+                        let
+                            ( deltaX, deltaY ) =
+                                ( x - grab.x, y - grab.y )
+                        in
+                        { withMappedTooltip
+                            | movement = Grabbed { lastX = grab.x, lastY = grab.y, x = x, y = y }
+                            , azimuth = dragAngle deltaX model.azimuth
+                            , elevation = dragAngle -deltaY model.elevation
+                        }
+
+                    _ ->
+                        withMappedTooltip
 
             MouseUp ->
-                case model.drawnRect of
-                    Nothing ->
-                        model
+                case model.movement of
+                    Grabbed { lastX, lastY, x, y } ->
+                        { model | movement = Momentum (x - lastX) (y - lastY) }
 
-                    Just drawnRect ->
-                        let
-                            currentLayer =
-                                ZipList.current model.layers
-                        in
-                        { model
-                            | drawnRect = Nothing
-                            , layers =
-                                ZipList.replace
-                                    { currentLayer
-                                        | spans =
-                                            drawnRect.rect
-                                                |> Rectangle3d.on currentLayer.plane
-                                                |> Span Nothing
-                                                |> flip (::) currentLayer.spans
-                                    }
-                                    model.layers
-                        }
+                    _ ->
+                        model
 
             Wheel deltaX deltaY ->
                 let
                     add delta =
-                        Angle.inDegrees >> (+) (delta * wheelCoefficient) >> Angle.degrees
+                        Angle.inDegrees >> (+) (delta * dragCoefficient) >> Angle.degrees
                 in
                 { model
                     | azimuth = add deltaX model.azimuth
@@ -327,32 +320,18 @@ update msg model =
                     withLayerSet |> transitionFocusTo newFocus
 
             MouseOver text x y ->
-                { model | tooltip = Just { text = text, mouseX = x, mouseY = y } }
+                case ( model.transition, model.movement ) of
+                    ( Nothing, Stationary ) ->
+                        { model | tooltip = Just { text = text, mouseX = x, mouseY = y } }
+
+                    _ ->
+                        model
 
             MouseOut ->
                 { model | tooltip = Nothing }
 
             AnimationTick delta ->
-                case model.transition of
-                    Nothing ->
-                        model
-
-                    Just ({ from, to } as transition) ->
-                        let
-                            at =
-                                transition.at + (delta / Duration.inMilliseconds transitionDuration)
-                        in
-                        if at >= 1 then
-                            { model
-                                | focus = to
-                                , transition = Nothing
-                            }
-
-                        else
-                            { model
-                                | focus = Point3d.interpolateFrom from to <| Ease.inOutCubic at
-                                , transition = Just { transition | at = at }
-                            }
+                model |> tickMomentum delta |> tickTransition delta
 
             WindowResize width height ->
                 { model | screenDimensions = ( width, height ) }
@@ -399,12 +378,7 @@ update msg model =
                     newFocus =
                         model.focus |> Point3d.translateBy zVector
                 in
-                { model
-                    | drawnRect = Nothing
-                    , layers =
-                        shift model.layers
-                            |> Maybe.withDefault (insert newLayer model.layers)
-                }
+                { model | layers = shift model.layers |> Maybe.withDefault (insert newLayer model.layers) }
                     |> transitionFocusTo newFocus
 
             CtrlZ ->
@@ -418,6 +392,56 @@ update msg model =
                             { currentLayer | spans = List.drop 1 currentLayer.spans }
                             model.layers
                 }
+
+
+tickMomentum : Float -> Model -> Model
+tickMomentum delta model =
+    case model.movement of
+        Momentum momentumX momentumY ->
+            let
+                deltaDecay =
+                    movementDecay ^ delta
+
+                ( decayedX, decayedY ) =
+                    ( momentumX * deltaDecay, momentumY * deltaDecay )
+            in
+            { model
+                | movement =
+                    if decayedX < 0.01 && decayedY < 0.02 then
+                        Stationary
+
+                    else
+                        Momentum decayedX decayedY
+                , azimuth = dragAngle momentumX model.azimuth
+                , elevation = dragAngle -momentumY model.elevation
+            }
+
+        _ ->
+            model
+
+
+tickTransition : Float -> Model -> Model
+tickTransition delta model =
+    case model.transition of
+        Just ({ from, to } as transition) ->
+            let
+                at =
+                    transition.at + (delta / Duration.inMilliseconds transitionDuration)
+            in
+            if at >= 1 then
+                { model
+                    | focus = to
+                    , transition = Nothing
+                }
+
+            else
+                { model
+                    | focus = Point3d.interpolateFrom from to <| Ease.inOutCubic at
+                    , transition = Just { transition | at = at }
+                }
+
+        Nothing ->
+            model
 
 
 transitionFocusTo : WorldPoint -> Model -> Model
@@ -457,10 +481,9 @@ view model =
                 ]
             ]
             [ nonBreakingTexts
-                [ "Draw rectangles."
-                , "Scroll to spin."
-                , "Left/right arrows to switch layers."
+                [ "Scroll or click and drag to look around."
                 , "Click a rectangle to go there."
+                , "Hover over a rectangle to see text."
                 , "Ctrl+Z to undo."
                 ]
             ]
@@ -506,44 +529,25 @@ viewSvg model =
             ( Length.centimeters (toFloat screenWidth * 22 / 1000), Length.centimeters (toFloat screenHeight * 17 / 800) )
                 |> Rectangle2d.centeredOn (Frame2d.atPoint model.centrePoint)
                 |> Rectangle3d.on currentLayer.plane
-
-        mouseEvents =
-            case model.drawnRect of
-                Nothing ->
-                    [ StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown ]
-
-                Just _ ->
-                    [ StyledEvents.onMouseUp MouseUp ]
     in
     model.layers
         |> ZipList.toList
-        |> indexedFilterMap
-            (\index layer ->
-                viewLayer camera
-                    (if index == currentIndex then
-                        model.drawnRect
-
-                     else
-                        Nothing
-                    )
-                    index
-                    layer
-            )
+        |> indexedFilterMap (viewLayer camera)
         |> List.sortBy (negate << .depth)
         |> List.map .svg
         |> (::) (viewFocusRect camera currentIndex focusRect)
         |> SvgStyled.svg
-            (mouseEvents
-                ++ [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
-                   , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
-                   , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
-                   , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
-                   ]
-            )
+            [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
+            , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
+            , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
+            , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
+            , StyledEvents.onMouseUp MouseUp
+            , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
+            ]
 
 
-viewLayer : CameraGeometry -> Maybe DrawnRect -> Int -> Layer -> Maybe { depth : Float, svg : SvgStyled.Svg Msg }
-viewLayer camera drawnRect index { plane, spans } =
+viewLayer : CameraGeometry -> Int -> Layer -> Maybe { depth : Float, svg : SvgStyled.Svg Msg }
+viewLayer camera index { plane, spans } =
     let
         depth =
             Camera3d.viewpoint camera.camera
@@ -562,19 +566,12 @@ viewLayer camera drawnRect index { plane, spans } =
 
     else
         let
-            maybeAppendDrawnRect =
-                drawnRect
-                    |> Maybe.andThen (.rect >> Rectangle3d.on plane >> Span Nothing >> viewSpan camera Inert)
-                    |> Maybe.map (::)
-                    |> Maybe.withDefault identity
-
             hue =
                 hueFromIndex index
 
             svg =
                 spans
                     |> List.filterMap (viewSpan camera (Focusable index <| theme.lighter hue fade))
-                    |> maybeAppendDrawnRect
                     |> SvgStyled.g
                         [ SvgAttr.css
                             [ Css.fill <| theme.light hue fade
@@ -839,35 +836,9 @@ type alias PlaneRect =
     Rectangle2d Length.Meters SourceCoordinates
 
 
-rectFrom : SourcePoint -> SourcePoint -> PlaneRect
-rectFrom originPoint endPoint =
-    let
-        halfHeight =
-            Vector2d.centimeters 0 0.5
-
-        length =
-            Vector2d.from originPoint endPoint
-                |> Vector2d.xComponent
-                |> flip Vector2d.xy (Length.meters 0)
-
-        topLeft =
-            originPoint
-                |> Point2d.translateBy (Vector2d.reverse halfHeight)
-
-        bottomRight =
-            originPoint
-                |> Point2d.translateBy (halfHeight |> Vector2d.plus length)
-    in
-    Rectangle2d.from topLeft bottomRight
-
-
-raycastTo : SourcePlane -> CameraGeometry -> Float -> ( Float, Float ) -> Maybe SourcePoint
-raycastTo sourcePlane { camera, screenRect } pixelRatio ( x, y ) =
-    Point2d.pixels x y
-        |> Point2d.at_ (resolution pixelRatio)
-        |> Camera3d.ray camera screenRect
-        |> Axis3d.intersectionWithPlane (SketchPlane3d.toPlane sourcePlane)
-        |> Maybe.map (Point3d.projectInto sourcePlane)
+dragAngle : Float -> Angle -> Angle
+dragAngle delta =
+    Angle.inDegrees >> (+) (delta * dragCoefficient) >> Angle.degrees
 
 
 projectEdge : CameraGeometry -> WorldLine -> ScreenLine
@@ -1072,8 +1043,12 @@ layerHueSpacing =
     30
 
 
-wheelCoefficient =
+dragCoefficient =
     0.3
+
+
+movementDecay =
+    0.9 ^ (1 / 30)
 
 
 screenMargins =
