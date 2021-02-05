@@ -502,6 +502,7 @@ viewHovered { camera, screenRect } layers =
                     [ css
                         [ Css.position Css.absolute
                         , Css.left <| Css.px <| left + 35
+                        , Css.transform <| Css.translateX <| Css.pct -40
                         , Css.top <| Css.px <| top - 50
                         , Css.padding <| Css.px 8
                         , Css.backgroundColor theme.accent
