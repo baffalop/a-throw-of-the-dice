@@ -103,7 +103,7 @@ type Msg
     | MouseMove Float Float
     | Wheel Float Float
     | ClickedTo Int WorldPoint
-    | MouseOver String Float Float
+    | MouseOverText String Float Float
     | MouseOut
     | AnimationTick Float
     | WindowResize Int Int
@@ -319,10 +319,15 @@ update msg model =
                 else
                     withLayerSet |> transitionFocusTo newFocus
 
-            MouseOver text x y ->
-                case ( model.transition, model.movement ) of
-                    ( Nothing, Stationary ) ->
-                        { model | tooltip = Just { text = text, mouseX = x, mouseY = y } }
+            MouseOverText text x y ->
+                case model.transition of
+                    Nothing ->
+                        case model.movement of
+                            Grabbed _ ->
+                                model
+
+                            _ ->
+                                { model | tooltip = Just { text = text, mouseX = x, mouseY = y } }
 
                     _ ->
                         model
@@ -404,10 +409,13 @@ tickMomentum delta model =
 
                 ( decayedX, decayedY ) =
                     ( momentumX * deltaDecay, momentumY * deltaDecay )
+
+                threshold =
+                    0.5
             in
             { model
                 | movement =
-                    if decayedX < 0.01 && decayedY < 0.02 then
+                    if decayedX < threshold && decayedY < threshold then
                         Stationary
 
                     else
@@ -593,7 +601,7 @@ viewSpan cameraGeometry behaviour { rect, text } =
         hoverEvents =
             case text of
                 Just text_ ->
-                    [ Svg.Styled.Events.on "mouseover" <| coordinateDecoder "offset" <| MouseOver text_
+                    [ Svg.Styled.Events.on "mouseover" <| coordinateDecoder "offset" <| MouseOverText text_
                     , Svg.Styled.Events.onMouseOut MouseOut
                     ]
 
@@ -1048,7 +1056,7 @@ dragCoefficient =
 
 
 movementDecay =
-    0.9 ^ (1 / 30)
+    0.9 ^ (1 / 25)
 
 
 screenMargins =
