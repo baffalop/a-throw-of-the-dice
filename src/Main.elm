@@ -66,7 +66,7 @@ type alias Model =
     , azimuth : Angle
     , elevation : Angle
     , drawnRect : Maybe DrawnRect
-    , hovering : Maybe ( Int, Int )
+    , tooltip : Maybe { text : String, mouseX : Float, mouseY : Float }
     , screenDimensions : ( Int, Int )
     , devicePixelRatio : Float
     }
@@ -103,7 +103,7 @@ type Msg
     | MouseMove Float Float
     | Wheel Float Float
     | ClickedTo Int WorldPoint
-    | MouseOver Int Int
+    | MouseOver String Float Float
     | MouseOut
     | AnimationTick Float
     | WindowResize Int Int
@@ -138,7 +138,7 @@ init { devicePixelRatio, screenDimensions } =
     , azimuth = Angle.degrees -90
     , elevation = Angle.degrees 180
     , drawnRect = Nothing
-    , hovering = Nothing
+    , tooltip = Nothing
     , screenDimensions = screenDimensions
     , devicePixelRatio = devicePixelRatio
     }
@@ -261,21 +261,20 @@ update msg model =
                 }
 
             MouseMove x y ->
-                case model.drawnRect of
-                    Nothing ->
-                        model
-
-                    Just rect ->
-                        let
-                            currentLayer =
-                                ZipList.current model.layers
-                        in
-                        { model
-                            | drawnRect =
-                                ( x, y )
-                                    |> raycastTo currentLayer.plane (makeCameraGeometry model) model.devicePixelRatio
-                                    |> Maybe.map (\endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
-                        }
+                let
+                    currentLayer =
+                        ZipList.current model.layers
+                in
+                { model
+                    | tooltip =
+                        Maybe.map
+                            (\popover -> { popover | mouseX = x, mouseY = y })
+                            model.tooltip
+                    , drawnRect =
+                        Maybe.map2 (\rect endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
+                            model.drawnRect
+                            (( x, y ) |> raycastTo currentLayer.plane (makeCameraGeometry model) model.devicePixelRatio)
+                }
 
             MouseUp ->
                 case model.drawnRect of
@@ -327,11 +326,11 @@ update msg model =
                 else
                     withLayerSet |> transitionFocusTo newFocus
 
-            MouseOver layerIndex index ->
-                { model | hovering = Just ( layerIndex, index ) }
+            MouseOver text x y ->
+                { model | tooltip = Just { text = text, mouseX = x, mouseY = y } }
 
             MouseOut ->
-                { model | hovering = Nothing }
+                { model | tooltip = Nothing }
 
             AnimationTick delta ->
                 case model.transition of
@@ -466,49 +465,15 @@ view model =
                 ]
             ]
         , Html.Styled.Lazy.lazy viewSvg model
-        , viewHovered (makeCameraGeometry model) model.layers <|
-            case model.transition of
-                Nothing ->
-                    model.hovering
-
-                Just _ ->
-                    Nothing
-        ]
-
-
-viewHovered : CameraGeometry -> ZipList Layer -> Maybe ( Int, Int ) -> Styled.Html msg
-viewHovered { camera, screenRect } layers =
-    let
-        getSpan ( layerIndex, index ) =
-            if abs (ZipList.currentIndex layers - layerIndex) > 1 then
-                Nothing
-
-            else
-                ZipList.goToIndex layerIndex layers
-                    |> Maybe.andThen (ZipList.current >> .spans >> List.Extra.getAt index)
-
-        unwrap span =
-            Maybe.map (\text -> { rect = span.rect, text = text }) span.text
-    in
-    Maybe.andThen getSpan
-        >> Maybe.andThen unwrap
-        >> Maybe.map
-            (\{ rect, text } ->
-                let
-                    ( left, top ) =
-                        rect
-                            |> Rectangle3d.centerPoint
-                            |> Point3d.Projection.toScreenSpace camera screenRect
-                            |> Point2d.coordinates
-                            |> Tuple.mapBoth Length.inCssPixels Length.inCssPixels
-                in
+        , case ( model.transition, model.tooltip ) of
+            ( Nothing, Just { text, mouseX, mouseY } ) ->
                 Styled.div
                     [ css
                         [ Css.position Css.absolute
-                        , Css.left <| Css.px <| left + 35
-                        , Css.transform <| Css.translateX <| Css.pct -40
-                        , Css.top <| Css.px <| top - 50
-                        , Css.padding <| Css.px 8
+                        , Css.left <| Css.px mouseX
+                        , Css.transform <| Css.translateX <| Css.pct -50
+                        , Css.top <| Css.px <| mouseY - 50
+                        , Css.padding <| Css.px 6
                         , Css.backgroundColor theme.accent
                         , Css.color theme.dark
                         , Css.fontFamilies [ "Fira Code", "monospace" ]
@@ -516,8 +481,10 @@ viewHovered { camera, screenRect } layers =
                         ]
                     ]
                     [ Styled.text text ]
-            )
-        >> Maybe.withDefault (Styled.text "")
+
+            _ ->
+                Styled.text ""
+        ]
 
 
 viewSvg : Model -> Styled.Html Msg
@@ -543,13 +510,10 @@ viewSvg model =
         mouseEvents =
             case model.drawnRect of
                 Nothing ->
-                    [ StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
-                    ]
+                    [ StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown ]
 
                 Just _ ->
-                    [ StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
-                    , StyledEvents.onMouseUp MouseUp
-                    ]
+                    [ StyledEvents.onMouseUp MouseUp ]
     in
     model.layers
         |> ZipList.toList
@@ -572,6 +536,7 @@ viewSvg model =
             (mouseEvents
                 ++ [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
                    , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
+                   , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
                    , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
                    ]
             )
@@ -599,7 +564,7 @@ viewLayer camera drawnRect index { plane, spans } =
         let
             maybeAppendDrawnRect =
                 drawnRect
-                    |> Maybe.andThen (.rect >> Rectangle3d.on plane >> Span Nothing >> viewSpan camera Inert 0)
+                    |> Maybe.andThen (.rect >> Rectangle3d.on plane >> Span Nothing >> viewSpan camera Inert)
                     |> Maybe.map (::)
                     |> Maybe.withDefault identity
 
@@ -608,7 +573,7 @@ viewLayer camera drawnRect index { plane, spans } =
 
             svg =
                 spans
-                    |> indexedFilterMap (viewSpan camera (Focusable index <| theme.lighter hue fade))
+                    |> List.filterMap (viewSpan camera (Focusable index <| theme.lighter hue fade))
                     |> maybeAppendDrawnRect
                     |> SvgStyled.g
                         [ SvgAttr.css
@@ -620,13 +585,23 @@ viewLayer camera drawnRect index { plane, spans } =
         Just { depth = depth, svg = svg }
 
 
-viewSpan : CameraGeometry -> SvgBehaviour -> Int -> Span -> Maybe (SvgStyled.Svg Msg)
-viewSpan cameraGeometry behaviour index { rect, text } =
+viewSpan : CameraGeometry -> SvgBehaviour -> Span -> Maybe (SvgStyled.Svg Msg)
+viewSpan cameraGeometry behaviour { rect, text } =
     let
         viewPlane =
             cameraGeometry.camera
                 |> Camera3d.viewpoint
                 |> Viewpoint3d.viewPlane
+
+        hoverEvents =
+            case text of
+                Just text_ ->
+                    [ Svg.Styled.Events.on "mouseover" <| coordinateDecoder "offset" <| MouseOver text_
+                    , Svg.Styled.Events.onMouseOut MouseOut
+                    ]
+
+                Nothing ->
+                    []
     in
     if Rectangle3d.vertices rect |> List.all (inFrontOf viewPlane) then
         let
@@ -640,8 +615,6 @@ viewSpan cameraGeometry behaviour index { rect, text } =
                 case behaviour of
                     Focusable layerIndex highlightColour ->
                         [ Svg.Styled.Events.onClick <| ClickedTo layerIndex <| Rectangle3d.centerPoint rect
-                        , Svg.Styled.Events.onMouseOver <| MouseOver layerIndex index
-                        , Svg.Styled.Events.onMouseOut MouseOut
                         , Svg.Styled.Events.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
                         , SvgAttr.css
                             [ Css.cursor Css.pointer
@@ -650,6 +623,7 @@ viewSpan cameraGeometry behaviour index { rect, text } =
                                 ]
                             ]
                         ]
+                            ++ hoverEvents
 
                     Inert ->
                         []
