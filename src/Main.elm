@@ -62,10 +62,10 @@ type alias Model =
     { layers : ZipList Layer
     , centrePoint : SourcePoint
     , focus : WorldPoint
-    , transition : Maybe Transition
     , azimuth : Angle
     , elevation : Angle
-    , movement : Movement
+    , drag : Movement
+    , transition : Maybe Transition
     , tooltip : Maybe { text : String, mouseX : Float, mouseY : Float }
     , screenDimensions : ( Int, Int )
     , devicePixelRatio : Float
@@ -145,10 +145,10 @@ init { devicePixelRatio, screenDimensions } =
     { layers = initLayers sourcePlane <| Poem.pair Poem.pages
     , centrePoint = centrePoint
     , focus = centrePoint |> Point3d.on sourcePlane
-    , transition = Nothing
     , azimuth = Angle.degrees -90
     , elevation = Angle.degrees 180
-    , movement = Stationary
+    , drag = Stationary
+    , transition = Nothing
     , tooltip = Nothing
     , screenDimensions = screenDimensions
     , devicePixelRatio = devicePixelRatio
@@ -202,7 +202,7 @@ spanToSpan plane { x, y, width, height, text } =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions { transition, movement } =
+subscriptions { transition, drag } =
     Sub.batch
         [ Browser.Events.onKeyDown <|
             Decode.oneOf
@@ -210,7 +210,7 @@ subscriptions { transition, movement } =
                 , arrowKeyDecoder ArrowKeyPressed
                 ]
         , Browser.Events.onResize WindowResize
-        , case movement of
+        , case drag of
             Momentum _ _ ->
                 Browser.Events.onAnimationFrameDelta AnimationTick
 
@@ -261,7 +261,7 @@ update msg model =
 
             MouseDown x y ->
                 { model
-                    | movement = Grabbed { x = x, y = y, lastX = x, lastY = y }
+                    | drag = Grabbed { x = x, y = y, lastX = x, lastY = y }
                     , tooltip = Nothing
                 }
 
@@ -270,14 +270,14 @@ update msg model =
                     withMappedTooltip =
                         { model | tooltip = Maybe.map (\popover -> { popover | mouseX = x, mouseY = y }) model.tooltip }
                 in
-                case model.movement of
+                case model.drag of
                     Grabbed grab ->
                         let
                             ( deltaX, deltaY ) =
                                 ( x - grab.x, y - grab.y )
                         in
                         { withMappedTooltip
-                            | movement = Grabbed { lastX = grab.x, lastY = grab.y, x = x, y = y }
+                            | drag = Grabbed { lastX = grab.x, lastY = grab.y, x = x, y = y }
                             , azimuth = dragAngle deltaX model.azimuth
                             , elevation = dragAngle -deltaY model.elevation
                         }
@@ -286,9 +286,9 @@ update msg model =
                         withMappedTooltip
 
             MouseUp ->
-                case model.movement of
+                case model.drag of
                     Grabbed { lastX, lastY, x, y } ->
-                        { model | movement = Momentum (x - lastX) (y - lastY) }
+                        { model | drag = Momentum (x - lastX) (y - lastY) }
 
                     _ ->
                         model
@@ -322,7 +322,7 @@ update msg model =
             MouseOverText text x y ->
                 case model.transition of
                     Nothing ->
-                        case model.movement of
+                        case model.drag of
                             Grabbed _ ->
                                 model
 
@@ -401,7 +401,7 @@ update msg model =
 
 tickMomentum : Float -> Model -> Model
 tickMomentum delta model =
-    case model.movement of
+    case model.drag of
         Momentum momentumX momentumY ->
             let
                 deltaDecay =
@@ -414,7 +414,7 @@ tickMomentum delta model =
                     0.5
             in
             { model
-                | movement =
+                | drag =
                     if decayedX < threshold && decayedY < threshold then
                         Stationary
 
