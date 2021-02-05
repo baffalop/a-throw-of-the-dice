@@ -60,7 +60,6 @@ main =
 
 type alias Model =
     { layers : ZipList Layer
-    , centrePoint : SourcePoint
     , focus : WorldPoint
     , azimuth : Angle
     , elevation : Angle
@@ -131,19 +130,10 @@ type ArrowKey
 init : { devicePixelRatio : Float, screenDimensions : ( Int, Int ) } -> ( Model, Cmd msg )
 init { devicePixelRatio, screenDimensions } =
     let
-        ( screenWidth, screenHeight ) =
-            screenDimensions
-
         sourcePlane =
             SketchPlane3d.xy
-
-        centrePoint =
-            Point2d.centimeters
-                (toFloat screenWidth * (13.2 / 1000))
-                (toFloat screenHeight * (10 / 800))
     in
     { layers = initLayers sourcePlane <| Poem.pair Poem.pages
-    , centrePoint = centrePoint
     , focus = centrePoint |> Point3d.on sourcePlane
     , azimuth = Angle.degrees -90
     , elevation = Angle.degrees 180
@@ -534,8 +524,9 @@ viewSvg model =
             ZipList.currentIndex model.layers
 
         focusRect =
-            ( Length.centimeters (toFloat screenWidth * 22 / 1000), Length.centimeters (toFloat screenHeight * 17 / 800) )
-                |> Rectangle2d.centeredOn (Frame2d.atPoint model.centrePoint)
+            layerDimensions
+                |> Vector2d.components
+                |> Rectangle2d.centeredOn (Frame2d.atPoint centrePoint)
                 |> Rectangle3d.on currentLayer.plane
     in
     model.layers
@@ -1041,6 +1032,18 @@ planeSpacing =
 
 scaling =
     0.4
+
+
+layerDimensions : Vector2d Length.Meters SourceCoordinates
+layerDimensions =
+    Vector2d.millimeters (954 * scaling) (792 * scaling)
+
+
+centrePoint : SourcePoint
+centrePoint =
+    Vector2d.interpolateFrom Vector2d.zero layerDimensions 0.5
+        |> Vector2d.components
+        |> uncurry Point2d.xy
 
 
 cornerRadius =
