@@ -66,6 +66,7 @@ type alias Model =
     , azimuth : Angle
     , elevation : Angle
     , drawnRect : Maybe DrawnRect
+    , hovering : Maybe ( Int, Int )
     , screenDimensions : ( Int, Int )
     , devicePixelRatio : Float
     }
@@ -102,6 +103,8 @@ type Msg
     | MouseMove Float Float
     | Wheel Float Float
     | ClickedTo Int WorldPoint
+    | MouseOver Int Int
+    | MouseOut
     | AnimationTick Float
     | WindowResize Int Int
     | ArrowKeyPressed ArrowKey
@@ -135,6 +138,7 @@ init { devicePixelRatio, screenDimensions } =
     , azimuth = Angle.degrees -90
     , elevation = Angle.degrees 180
     , drawnRect = Nothing
+    , hovering = Nothing
     , screenDimensions = screenDimensions
     , devicePixelRatio = devicePixelRatio
     }
@@ -323,6 +327,12 @@ update msg model =
                 else
                     withLayerSet |> transitionFocusTo newFocus
 
+            MouseOver layerIndex index ->
+                { model | hovering = Just ( layerIndex, index ) }
+
+            MouseOut ->
+                { model | hovering = Nothing }
+
             AnimationTick delta ->
                 case model.transition of
                     Nothing ->
@@ -456,7 +466,52 @@ view model =
                 ]
             ]
         , Html.Styled.Lazy.lazy viewSvg model
+        , viewHovered (makeCameraGeometry model) model.layers <|
+            case model.transition of
+                Nothing ->
+                    model.hovering
+
+                Just _ ->
+                    Nothing
         ]
+
+
+viewHovered : CameraGeometry -> ZipList Layer -> Maybe ( Int, Int ) -> Styled.Html msg
+viewHovered { camera, screenRect } layers =
+    let
+        getSpan ( layerIndex, index ) =
+            ZipList.goToIndex layerIndex layers
+                |> Maybe.andThen (ZipList.current >> .spans >> List.Extra.getAt index)
+
+        unwrap span =
+            Maybe.map (\text -> { rect = span.rect, text = text }) span.text
+    in
+    Maybe.andThen getSpan
+        >> Maybe.andThen unwrap
+        >> Maybe.map
+            (\{ rect, text } ->
+                let
+                    ( left, top ) =
+                        rect
+                            |> Rectangle3d.centerPoint
+                            |> Point3d.Projection.toScreenSpace camera screenRect
+                            |> Point2d.coordinates
+                            |> Tuple.mapBoth Length.inCssPixels Length.inCssPixels
+                in
+                Styled.div
+                    [ css
+                        [ Css.position Css.absolute
+                        , Css.left <| Css.px <| left + 35
+                        , Css.top <| Css.px <| top - 50
+                        , Css.padding <| Css.px 8
+                        , Css.backgroundColor theme.accent
+                        , Css.color theme.dark
+                        , Css.fontFamilies [ "Fira Code", "monospace" ]
+                        ]
+                    ]
+                    [ Styled.text text ]
+            )
+        >> Maybe.withDefault (Styled.text "")
 
 
 viewSvg : Model -> Styled.Html Msg
@@ -492,9 +547,8 @@ viewSvg model =
     in
     model.layers
         |> ZipList.toList
-        |> List.indexedMap Tuple.pair
-        |> List.filterMap
-            (\( index, layer ) ->
+        |> indexedFilterMap
+            (\index layer ->
                 viewLayer camera
                     (if index == currentIndex then
                         model.drawnRect
@@ -539,7 +593,7 @@ viewLayer camera drawnRect index { plane, spans } =
         let
             maybeAppendDrawnRect =
                 drawnRect
-                    |> Maybe.andThen (.rect >> Rectangle3d.on plane >> viewRect camera Inert)
+                    |> Maybe.andThen (.rect >> Rectangle3d.on plane >> Span Nothing >> viewSpan camera Inert 0)
                     |> Maybe.map (::)
                     |> Maybe.withDefault identity
 
@@ -548,7 +602,7 @@ viewLayer camera drawnRect index { plane, spans } =
 
             svg =
                 spans
-                    |> List.filterMap (.rect >> viewRect camera (Focusable index <| theme.lighter hue fade))
+                    |> indexedFilterMap (viewSpan camera (Focusable index <| theme.lighter hue fade))
                     |> maybeAppendDrawnRect
                     |> SvgStyled.g
                         [ SvgAttr.css
@@ -560,8 +614,8 @@ viewLayer camera drawnRect index { plane, spans } =
         Just { depth = depth, svg = svg }
 
 
-viewRect : CameraGeometry -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
-viewRect cameraGeometry behaviour rect =
+viewSpan : CameraGeometry -> SvgBehaviour -> Int -> Span -> Maybe (SvgStyled.Svg Msg)
+viewSpan cameraGeometry behaviour index { rect, text } =
     let
         viewPlane =
             cameraGeometry.camera
@@ -580,6 +634,8 @@ viewRect cameraGeometry behaviour rect =
                 case behaviour of
                     Focusable layerIndex highlightColour ->
                         [ Svg.Styled.Events.onClick <| ClickedTo layerIndex <| Rectangle3d.centerPoint rect
+                        , Svg.Styled.Events.onMouseOver <| MouseOver layerIndex index
+                        , Svg.Styled.Events.onMouseOut MouseOut
                         , Svg.Styled.Events.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
                         , SvgAttr.css
                             [ Css.cursor Css.pointer
@@ -963,6 +1019,20 @@ concatMapCarry f =
                 |> Tuple.mapBoth Just ((++) accumulatedList)
     in
     List.foldl mapCarrier ( Nothing, [] )
+
+
+indexedFilterMap : (Int -> a -> Maybe b) -> List a -> List b
+indexedFilterMap f =
+    List.foldl
+        (\item ( index, result ) ->
+            f index item
+                |> Maybe.map (flip (::) result)
+                |> Maybe.withDefault result
+                |> Tuple.pair (index + 1)
+        )
+        ( 0, [] )
+        >> Tuple.second
+        >> List.reverse
 
 
 ziplistInsertBefore : a -> ZipList a -> ZipList a
