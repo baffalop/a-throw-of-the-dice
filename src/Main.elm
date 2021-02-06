@@ -322,21 +322,21 @@ update msg model =
 
                     direction =
                         if planesAreFacingRight then
-                            key
+                            reverse key
 
                         else
-                            reverse key
+                            key
 
                     { multiplier, shift, insert } =
                         case direction of
                             Left ->
-                                { multiplier = 1
+                                { multiplier = -1
                                 , shift = ZipList.maybeJumpForward 1
                                 , insert = ZipList.insert
                                 }
 
                             Right ->
-                                { multiplier = -1
+                                { multiplier = 1
                                 , shift = ZipList.maybeJumpBackward 1
                                 , insert = ziplistInsertBefore
                                 }
