@@ -77,7 +77,7 @@ type alias Layer =
 
 
 type alias Span =
-    { text : Maybe String
+    { text : String
     , rect : Rect
     }
 
@@ -187,7 +187,7 @@ spanToSpan plane { x, y, width, height, text } =
         , y2 = Length.millimeters (floatY + floatHeight)
         }
         |> Rectangle3d.on plane
-        |> Span (Just text)
+        |> Span text
 
 
 subscriptions : Model -> Sub Msg
@@ -579,16 +579,6 @@ viewSpan cameraGeometry behaviour { rect, text } =
             cameraGeometry.camera
                 |> Camera3d.viewpoint
                 |> Viewpoint3d.viewPlane
-
-        hoverEvents =
-            case text of
-                Just text_ ->
-                    [ Svg.Styled.Events.on "mouseover" <| coordinateDecoder "offset" <| MouseOverText text_
-                    , Svg.Styled.Events.onMouseOut MouseOut
-                    ]
-
-                Nothing ->
-                    []
     in
     if Rectangle3d.vertices rect |> List.all (inFrontOf viewPlane) then
         let
@@ -603,6 +593,8 @@ viewSpan cameraGeometry behaviour { rect, text } =
                     Focusable layerIndex highlightColour ->
                         [ Svg.Styled.Events.onClick <| ClickedTo layerIndex <| Rectangle3d.centerPoint rect
                         , Svg.Styled.Events.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
+                        , Svg.Styled.Events.on "mouseover" <| coordinateDecoder "offset" <| MouseOverSpan text
+                        , Svg.Styled.Events.onMouseOut MouseOutSpan
                         , SvgAttr.css
                             [ Css.cursor Css.pointer
                             , Css.hover
@@ -610,7 +602,6 @@ viewSpan cameraGeometry behaviour { rect, text } =
                                 ]
                             ]
                         ]
-                            ++ hoverEvents
 
                     Inert ->
                         []
