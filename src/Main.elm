@@ -519,19 +519,13 @@ viewSvg model =
 
         currentIndex =
             ZipList.currentIndex model.layers
-
-        focusRect =
-            layerDimensions
-                |> Vector2d.components
-                |> Rectangle2d.centeredOn (Frame2d.atPoint centrePoint)
-                |> Rectangle3d.on currentLayer.plane
     in
     model.layers
         |> ZipList.toList
         |> indexedFilterMap (viewLayer camera)
         |> List.sortBy (negate << .depth)
         |> List.map .svg
-        |> (::) (viewFocusRect camera currentIndex focusRect)
+        |> (::) (viewFocusRect camera currentIndex currentLayer.plane)
         |> SvgStyled.svg
             [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
             , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
@@ -630,9 +624,15 @@ viewSpan cameraGeometry behaviour { rect, text } =
         Nothing
 
 
-viewFocusRect : CameraGeometry -> Int -> Rect -> SvgStyled.Svg msg
-viewFocusRect cameraGeometry index rect =
+viewFocusRect : CameraGeometry -> Int -> SourcePlane -> SvgStyled.Svg msg
+viewFocusRect cameraGeometry index plane =
     let
+        rect =
+            layerDimensions
+                |> Vector2d.components
+                |> Rectangle2d.centeredOn (Frame2d.atPoint centrePoint)
+                |> Rectangle3d.on plane
+
         viewPlane =
             cameraGeometry.camera
                 |> Camera3d.viewpoint
