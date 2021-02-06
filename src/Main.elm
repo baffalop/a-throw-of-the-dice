@@ -64,7 +64,7 @@ type alias Model =
     , elevation : Angle
     , drag : Movement
     , transition : Maybe Transition
-    , tooltip : Maybe { text : String, mouseX : Float, mouseY : Float }
+    , hover : Maybe { text : String, mouseX : Float, mouseY : Float }
     , screenDimensions : ( Int, Int )
     , devicePixelRatio : Float
     }
@@ -101,8 +101,8 @@ type Msg
     | MouseMove Float Float
     | Wheel Float Float
     | ClickedTo Int WorldPoint
-    | MouseOverText String Float Float
-    | MouseOut
+    | MouseOverSpan String Float Float
+    | MouseOutSpan
     | AnimationTick Float
     | WindowResize Int Int
     | ArrowKeyPressed ArrowKey
@@ -138,7 +138,7 @@ init { devicePixelRatio, screenDimensions } =
     , elevation = Angle.degrees 180
     , drag = Stationary
     , transition = Nothing
-    , tooltip = Nothing
+    , hover = Nothing
     , screenDimensions = screenDimensions
     , devicePixelRatio = devicePixelRatio
     }
@@ -251,13 +251,13 @@ update msg model =
             MouseDown x y ->
                 { model
                     | drag = Grabbed { x = x, y = y, lastX = x, lastY = y }
-                    , tooltip = Nothing
+                    , hover = Nothing
                 }
 
             MouseMove x y ->
                 let
-                    withMappedTooltip =
-                        { model | tooltip = Maybe.map (\popover -> { popover | mouseX = x, mouseY = y }) model.tooltip }
+                    withMappedHover =
+                        { model | hover = Maybe.map (\hover -> { hover | mouseX = x, mouseY = y }) model.hover }
                 in
                 case model.drag of
                     Grabbed grab ->
@@ -265,14 +265,14 @@ update msg model =
                             ( deltaX, deltaY ) =
                                 ( x - grab.x, y - grab.y )
                         in
-                        { withMappedTooltip
+                        { withMappedHover
                             | drag = Grabbed { lastX = grab.x, lastY = grab.y, x = x, y = y }
                             , azimuth = dragAngle deltaX model.azimuth
                             , elevation = dragAngle -deltaY model.elevation
                         }
 
                     _ ->
-                        withMappedTooltip
+                        withMappedHover
 
             MouseUp ->
                 case model.drag of
@@ -305,7 +305,7 @@ update msg model =
                     }
                         |> transitionFocusTo newFocus
 
-            MouseOverText text x y ->
+            MouseOverSpan text x y ->
                 case model.transition of
                     Nothing ->
                         case model.drag of
@@ -313,13 +313,13 @@ update msg model =
                                 model
 
                             _ ->
-                                { model | tooltip = Just { text = text, mouseX = x, mouseY = y } }
+                                { model | hover = Just { text = text, mouseX = x, mouseY = y } }
 
                     _ ->
                         model
 
-            MouseOut ->
-                { model | tooltip = Nothing }
+            MouseOutSpan ->
+                { model | hover = Nothing }
 
             AnimationTick delta ->
                 model |> tickMomentum delta |> tickTransition delta
@@ -447,7 +447,7 @@ transitionFocusTo focus model =
                 , to = focus
                 , at = 0
                 }
-        , tooltip = Nothing
+        , hover = Nothing
     }
 
 
@@ -483,7 +483,7 @@ view model =
                 ]
             ]
         , Html.Styled.Lazy.lazy viewSvg model
-        , case ( model.transition, model.tooltip ) of
+        , case ( model.transition, model.hover ) of
             ( Nothing, Just { text, mouseX, mouseY } ) ->
                 Styled.div
                     [ css
