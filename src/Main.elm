@@ -293,20 +293,17 @@ update msg model =
                 }
 
             ClickedTo layerIndex newFocus ->
-                let
-                    withLayerSet =
-                        { model
-                            | layers =
-                                model.layers
-                                    |> ZipList.goToIndex layerIndex
-                                    |> Maybe.withDefault model.layers
-                        }
-                in
                 if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
-                    withLayerSet
+                    model
 
                 else
-                    withLayerSet |> transitionFocusTo newFocus
+                    { model
+                        | layers =
+                            model.layers
+                                |> ZipList.goToIndex layerIndex
+                                |> Maybe.withDefault model.layers
+                    }
+                        |> transitionFocusTo newFocus
 
             MouseOverText text x y ->
                 case model.transition of
@@ -450,6 +447,7 @@ transitionFocusTo focus model =
                 , to = focus
                 , at = 0
                 }
+        , tooltip = Nothing
     }
 
 
