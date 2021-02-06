@@ -1,24 +1,24 @@
 module Main exposing (..)
 
 import Angle exposing (Angle)
-import Axis3d exposing (Axis3d)
 import Basics.Extra exposing (..)
 import Browser
 import Browser.Events
 import Camera3d exposing (Camera3d)
+import Color
 import Css
 import Direction2d
 import Direction3d
 import Duration exposing (Duration)
 import Ease
 import Frame2d
+import HSLuv exposing (HSLuv)
 import Html exposing (Html)
 import Html.Styled as Styled
 import Html.Styled.Attributes exposing (css)
 import Html.Styled.Events as StyledEvents
 import Html.Styled.Lazy
 import Json.Decode as Decode exposing (Decoder)
-import Keyboard.Event
 import Length
 import LineSegment2d exposing (LineSegment2d)
 import LineSegment3d exposing (LineSegment3d)
@@ -26,6 +26,7 @@ import LineSegment3d.Projection
 import List.Extra
 import Path.LowLevel as SvgPath exposing (DrawTo(..), Mode(..), MoveTo(..))
 import Pixels
+import Poem
 import Point2d exposing (Point2d)
 import Point3d exposing (Point3d)
 import Point3d.Projection
@@ -57,12 +58,12 @@ main =
 
 type alias Model =
     { layers : ZipList Layer
-    , centrePoint : SourcePoint
     , focus : WorldPoint
-    , transition : Maybe Transition
     , azimuth : Angle
     , elevation : Angle
-    , drawnRect : Maybe DrawnRect
+    , drag : Movement
+    , transition : Maybe Transition
+    , hover : Maybe { text : String, mouseX : Float, mouseY : Float }
     , screenDimensions : ( Int, Int )
     , devicePixelRatio : Float
     }
@@ -70,8 +71,13 @@ type alias Model =
 
 type alias Layer =
     { plane : SourcePlane
-    , rects : List Rect
-    , hue : Float
+    , spans : List Span
+    }
+
+
+type alias Span =
+    { text : String
+    , rect : Rect
     }
 
 
@@ -82,10 +88,8 @@ type alias DrawnRect =
 
 
 type alias Transition =
-    { fromFocus : WorldPoint
-    , toFocus : WorldPoint
-    , fromAzimuth : Angle
-    , toAzimuth : Angle
+    { from : WorldPoint
+    , to : WorldPoint
     , at : Float
     }
 
@@ -96,11 +100,23 @@ type Msg
     | MouseMove Float Float
     | Wheel Float Float
     | ClickedTo Int WorldPoint
+    | MouseOverSpan String Float Float
+    | MouseOutSpan
     | AnimationTick Float
     | WindowResize Int Int
     | ArrowKeyPressed ArrowKey
-    | CtrlZ
     | NoOp
+
+
+type Movement
+    = Stationary
+    | Momentum Float Float
+    | Grabbed
+        { lastX : Float
+        , lastY : Float
+        , x : Float
+        , y : Float
+        }
 
 
 type ArrowKey
@@ -111,62 +127,84 @@ type ArrowKey
 init : { devicePixelRatio : Float, screenDimensions : ( Int, Int ) } -> ( Model, Cmd msg )
 init { devicePixelRatio, screenDimensions } =
     let
-        ( screenWidth, screenHeight ) =
-            screenDimensions
-
         sourcePlane =
             SketchPlane3d.xy
-
-        centrePoint =
-            Point2d.centimeters
-                (toFloat screenWidth * (13.2 / 1000))
-                (toFloat screenHeight * (10 / 800))
     in
-    { layers =
-        ZipList.singleton
-            { plane = sourcePlane
-            , rects = []
-            , hue = theme.initialLayerHue
-            }
-    , centrePoint = centrePoint
+    { layers = initLayers sourcePlane <| Poem.pair Poem.pages
     , focus = centrePoint |> Point3d.on sourcePlane
+    , azimuth = Angle.degrees -90
+    , elevation = Angle.degrees 180
+    , drag = Stationary
     , transition = Nothing
-    , azimuth = Angle.degrees 90
-    , elevation = Angle.degrees 0
-    , drawnRect = Nothing
+    , hover = Nothing
     , screenDimensions = screenDimensions
     , devicePixelRatio = devicePixelRatio
     }
         |> withNoCmd
 
 
+initLayers : SourcePlane -> List (List Poem.Span) -> ZipList Layer
+initLayers originPlane =
+    List.indexedMap
+        (\index page ->
+            let
+                zVector =
+                    planeSpacing
+                        |> Quantity.multiplyBy (toFloat index * -1)
+                        |> Vector3d.xyz zeroMeters zeroMeters
+
+                plane =
+                    originPlane |> SketchPlane3d.translateBy zVector
+            in
+            { plane = plane
+            , spans = List.map (spanToSpan plane) page
+            }
+        )
+        >> ZipList.fromList
+        >> Maybe.withDefault
+            (ZipList.singleton
+                { plane = originPlane
+                , spans = []
+                }
+            )
+
+
+spanToSpan : SourcePlane -> Poem.Span -> Span
+spanToSpan plane { x, y, width, height, text } =
+    let
+        ( floatX, floatY ) =
+            ( toFloat x * scaling, toFloat y * scaling )
+
+        ( floatWidth, floatHeight ) =
+            ( toFloat width * scaling, toFloat height * scaling )
+    in
+    Rectangle2d.with
+        { x1 = Length.millimeters floatX
+        , y1 = Length.millimeters floatY
+        , x2 = Length.millimeters (floatX + floatWidth)
+        , y2 = Length.millimeters (floatY + floatHeight)
+        }
+        |> Rectangle3d.on plane
+        |> Span text
+
+
 subscriptions : Model -> Sub Msg
-subscriptions { transition } =
+subscriptions { transition, drag } =
     Sub.batch
-        [ Browser.Events.onKeyDown <|
-            Decode.oneOf
-                [ ctrlZDecoder CtrlZ
-                , arrowKeyDecoder ArrowKeyPressed
-                ]
+        [ Browser.Events.onKeyDown <| arrowKeyDecoder ArrowKeyPressed
         , Browser.Events.onResize WindowResize
-        , case transition of
-            Nothing ->
-                Sub.none
-
-            Just _ ->
+        , case drag of
+            Momentum _ _ ->
                 Browser.Events.onAnimationFrameDelta AnimationTick
+
+            _ ->
+                case transition of
+                    Just _ ->
+                        Browser.Events.onAnimationFrameDelta AnimationTick
+
+                    Nothing ->
+                        Sub.none
         ]
-
-
-ctrlZDecoder : msg -> Decoder msg
-ctrlZDecoder msg =
-    Keyboard.Event.considerKeyboardEvent <|
-        \{ ctrlKey, metaKey, key } ->
-            if (metaKey || ctrlKey) && key == Just "z" then
-                Just msg
-
-            else
-                Nothing
 
 
 arrowKeyDecoder : (ArrowKey -> msg) -> Decoder msg
@@ -194,69 +232,51 @@ update msg model =
                 model
 
             MouseDown x y ->
-                let
-                    currentLayer =
-                        ZipList.current model.layers
-                in
                 { model
-                    | drawnRect =
-                        ( x, y )
-                            |> raycastTo currentLayer.plane (makeCameraGeometry model) model.devicePixelRatio
-                            |> Maybe.map
-                                (\point ->
-                                    { originPoint = point
-                                    , rect = rectFrom point point
-                                    }
-                                )
+                    | drag = Grabbed { x = x, y = y, lastX = x, lastY = y }
+                    , hover = Nothing
                 }
 
             MouseMove x y ->
-                case model.drawnRect of
-                    Nothing ->
-                        model
-
-                    Just rect ->
+                let
+                    withMappedHover =
+                        { model | hover = Maybe.map (\hover -> { hover | mouseX = x, mouseY = y }) model.hover }
+                in
+                case model.drag of
+                    Grabbed grab ->
                         let
-                            currentLayer =
-                                ZipList.current model.layers
+                            ( deltaX, deltaY ) =
+                                ( x - grab.x, y - grab.y )
                         in
-                        { model
-                            | drawnRect =
-                                ( x, y )
-                                    |> raycastTo currentLayer.plane (makeCameraGeometry model) model.devicePixelRatio
-                                    |> Maybe.map (\endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
+                        { withMappedHover
+                            | drag = Grabbed { lastX = grab.x, lastY = grab.y, x = x, y = y }
+                            , azimuth = dragAngle deltaX model.azimuth
+                            , elevation = dragAngle -deltaY model.elevation
                         }
 
+                    _ ->
+                        withMappedHover
+
             MouseUp ->
-                let
-                    currentLayer =
-                        ZipList.current model.layers
-                in
-                { model
-                    | drawnRect = Nothing
-                    , layers =
-                        ZipList.replace
-                            { currentLayer
-                                | rects =
-                                    model.drawnRect
-                                        |> Maybe.map (.rect >> Rectangle3d.on currentLayer.plane >> flip (::) currentLayer.rects)
-                                        |> Maybe.withDefault currentLayer.rects
-                            }
-                            model.layers
-                }
+                case model.drag of
+                    Grabbed { lastX, lastY, x, y } ->
+                        { model | drag = Momentum (x - lastX) (y - lastY) }
+
+                    _ ->
+                        model
 
             Wheel deltaX deltaY ->
                 let
                     add delta =
-                        Angle.inDegrees >> (+) (delta * wheelCoefficient) >> Angle.degrees
+                        Angle.inDegrees >> (+) (delta * dragCoefficient) >> Angle.degrees
                 in
                 { model
-                    | azimuth = model.azimuth |> add deltaX
-                    , elevation = model.elevation |> add deltaY
+                    | azimuth = add deltaX model.azimuth
+                    , elevation = add deltaY model.elevation
                 }
 
-            ClickedTo layerIndex _ ->
-                if layerIndex == ZipList.currentIndex model.layers then
+            ClickedTo layerIndex newFocus ->
+                if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
                     model
 
                 else
@@ -266,34 +286,26 @@ update msg model =
                                 |> ZipList.goToIndex layerIndex
                                 |> Maybe.withDefault model.layers
                     }
-                        |> transitionLayerFrom (ZipList.current model.layers |> .plane)
+                        |> transitionFocusTo newFocus
 
-            AnimationTick delta ->
+            MouseOverSpan text x y ->
                 case model.transition of
                     Nothing ->
+                        case model.drag of
+                            Grabbed _ ->
+                                model
+
+                            _ ->
+                                { model | hover = Just { text = text, mouseX = x, mouseY = y } }
+
+                    _ ->
                         model
 
-                    Just ({ fromFocus, toFocus, fromAzimuth, toAzimuth } as transition) ->
-                        let
-                            at =
-                                transition.at + (delta / Duration.inMilliseconds transitionDuration)
+            MouseOutSpan ->
+                { model | hover = Nothing }
 
-                            easedAt =
-                                Ease.inOutCubic at
-                        in
-                        if at >= 1 then
-                            { model
-                                | focus = toFocus
-                                , azimuth = toAzimuth
-                                , transition = Nothing
-                            }
-
-                        else
-                            { model
-                                | focus = Point3d.interpolateFrom fromFocus toFocus easedAt
-                                , azimuth = Quantity.interpolateFrom fromAzimuth toAzimuth easedAt
-                                , transition = Just { transition | at = at }
-                            }
+            AnimationTick delta ->
+                model |> tickMomentum delta |> tickTransition delta
 
             WindowResize width height ->
                 { model | screenDimensions = ( width, height ) }
@@ -303,18 +315,17 @@ update msg model =
                     currentLayer =
                         ZipList.current model.layers
 
-                    focusedPlaneFacesRight =
-                        model.layers
-                            |> ZipList.current
+                    planesAreFacingRight =
+                        ZipList.current model.layers
                             |> .plane
                             |> isFacingRightOf (makeViewpoint model)
 
                     direction =
-                        if focusedPlaneFacesRight then
-                            reverse key
+                        if planesAreFacingRight then
+                            key
 
                         else
-                            key
+                            reverse key
 
                     { multiplier, shift, insert } =
                         case direction of
@@ -330,73 +341,84 @@ update msg model =
                                 , insert = ziplistInsertBefore
                                 }
 
-                    newPlane =
-                        currentLayer.plane
-                            |> SketchPlane3d.rotateAround planeFanAxis (planeSpacing |> Quantity.multiplyBy multiplier)
+                    zVector =
+                        Vector3d.xyz zeroMeters zeroMeters (planeSpacing |> Quantity.multiplyBy multiplier)
 
                     newLayer =
-                        { plane = newPlane
-                        , rects = []
-                        , hue = currentLayer.hue + (multiplier * layerHueSpacing) |> floor |> modBy 256 |> toFloat
+                        { plane = currentLayer.plane |> SketchPlane3d.translateBy zVector
+                        , spans = []
                         }
+
+                    newFocus =
+                        model.focus |> Point3d.translateBy zVector
                 in
+                { model | layers = shift model.layers |> Maybe.withDefault (insert newLayer model.layers) }
+                    |> transitionFocusTo newFocus
+
+
+tickMomentum : Float -> Model -> Model
+tickMomentum delta model =
+    case model.drag of
+        Momentum momentumX momentumY ->
+            let
+                deltaDecay =
+                    movementDecay ^ delta
+
+                ( decayedX, decayedY ) =
+                    ( momentumX * deltaDecay, momentumY * deltaDecay )
+
+                threshold =
+                    0.2
+            in
+            { model
+                | drag =
+                    if decayedX < threshold && decayedY < threshold then
+                        Stationary
+
+                    else
+                        Momentum decayedX decayedY
+                , azimuth = dragAngle momentumX model.azimuth
+                , elevation = dragAngle -momentumY model.elevation
+            }
+
+        _ ->
+            model
+
+
+tickTransition : Float -> Model -> Model
+tickTransition delta model =
+    case model.transition of
+        Just ({ from, to } as transition) ->
+            let
+                at =
+                    transition.at + (delta / Duration.inMilliseconds transitionDuration)
+            in
+            if at >= 1 then
                 { model
-                    | drawnRect = Nothing
-                    , layers =
-                        shift model.layers
-                            |> Maybe.withDefault (insert newLayer model.layers)
+                    | focus = to
+                    , transition = Nothing
                 }
-                    |> transitionLayerFrom currentLayer.plane
 
-            CtrlZ ->
-                let
-                    currentLayer =
-                        ZipList.current model.layers
-                in
+            else
                 { model
-                    | layers =
-                        ZipList.replace
-                            { currentLayer | rects = List.drop 1 currentLayer.rects }
-                            model.layers
+                    | focus = Point3d.interpolateFrom from to <| Ease.inOutCubic at
+                    , transition = Just { transition | at = at }
                 }
 
+        Nothing ->
+            model
 
-transitionLayerFrom : SourcePlane -> Model -> Model
-transitionLayerFrom previousPlane model =
-    let
-        targetPlane =
-            model.layers
-                |> ZipList.current
-                |> .plane
 
-        angle =
-            targetPlane
-                |> SketchPlane3d.xAxis
-                |> Axis3d.direction
-                |> Direction3d.projectInto SketchPlane3d.xz
-                |> Maybe.withDefault Direction2d.positiveX
-                |> Direction2d.angleFrom
-                    (previousPlane
-                        |> SketchPlane3d.xAxis
-                        |> Axis3d.direction
-                        |> Direction3d.projectInto SketchPlane3d.xz
-                        |> Maybe.withDefault Direction2d.positiveX
-                    )
-
-        newFocus =
-            model.focus
-                |> Point3d.projectInto previousPlane
-                |> Point3d.on targetPlane
-    in
+transitionFocusTo : WorldPoint -> Model -> Model
+transitionFocusTo focus model =
     { model
         | transition =
             Just
-                { fromFocus = model.focus
-                , toFocus = newFocus
-                , fromAzimuth = model.azimuth
-                , toAzimuth = model.azimuth |> Quantity.plus angle
+                { from = model.focus
+                , to = focus
                 , at = 0
                 }
+        , hover = Nothing
     }
 
 
@@ -425,14 +447,31 @@ view model =
                 ]
             ]
             [ nonBreakingTexts
-                [ "Draw rectangles."
-                , "Scroll to spin."
-                , "Left/right arrows to switch layers."
+                [ "Scroll or click and drag to look around."
                 , "Click a rectangle to go there."
-                , "Ctrl+Z to undo."
+                , "Hover over a rectangle to see text."
                 ]
             ]
         , Html.Styled.Lazy.lazy viewSvg model
+        , case ( model.transition, model.hover ) of
+            ( Nothing, Just { text, mouseX, mouseY } ) ->
+                Styled.div
+                    [ css
+                        [ Css.position Css.absolute
+                        , Css.left <| Css.px mouseX
+                        , Css.transform <| Css.translateX <| Css.pct -50
+                        , Css.top <| Css.px <| mouseY - 50
+                        , Css.padding <| Css.px 6
+                        , Css.backgroundColor theme.accent
+                        , Css.color theme.dark
+                        , Css.fontFamilies [ "Fira Code", "monospace" ]
+                        , Css.pointerEvents Css.none
+                        ]
+                    ]
+                    [ Styled.text text ]
+
+            _ ->
+                Styled.text ""
         ]
 
 
@@ -450,76 +489,61 @@ viewSvg model =
 
         currentIndex =
             ZipList.currentIndex model.layers
-
-        orderByDepth =
-            if currentLayer.plane |> isFacingAwayFrom (Camera3d.viewpoint camera.camera) then
-                identity
-
-            else
-                List.reverse
-
-        focusRect =
-            ( Length.centimeters (toFloat screenWidth * 22 / 1000), Length.centimeters (toFloat screenHeight * 17 / 800) )
-                |> Rectangle2d.centeredOn (Frame2d.atPoint model.centrePoint)
-                |> Rectangle3d.on currentLayer.plane
-
-        mouseEvents =
-            case model.drawnRect of
-                Nothing ->
-                    [ StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
-                    ]
-
-                Just _ ->
-                    [ StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
-                    , StyledEvents.onMouseUp MouseUp
-                    ]
     in
     model.layers
         |> ZipList.toList
-        |> List.indexedMap
-            (\index ->
-                viewLayer camera
-                    (if index == currentIndex then
-                        model.drawnRect
-
-                     else
-                        Nothing
-                    )
-                    index
-            )
-        |> orderByDepth
-        |> (::) (viewFocusRect camera currentLayer.hue focusRect)
+        |> indexedFilterMap (viewLayer camera)
+        |> List.sortBy (negate << .depth)
+        |> List.map .svg
+        |> (::) (viewFocusRect camera currentIndex currentLayer.plane)
         |> SvgStyled.svg
-            (mouseEvents
-                ++ [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
-                   , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
-                   , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
-                   ]
-            )
-
-
-viewLayer : CameraGeometry -> Maybe DrawnRect -> Int -> Layer -> SvgStyled.Svg Msg
-viewLayer camera drawnRect index { plane, rects, hue } =
-    let
-        maybeAppendDrawnRect =
-            drawnRect
-                |> Maybe.andThen (.rect >> Rectangle3d.on plane >> viewRect camera Inert)
-                |> Maybe.map (::)
-                |> Maybe.withDefault identity
-    in
-    rects
-        |> List.filterMap (viewRect camera (Focusable index <| theme.lighter hue))
-        |> maybeAppendDrawnRect
-        |> SvgStyled.g
-            [ SvgAttr.css
-                [ Css.fill <| theme.light hue
-                , Css.margin <| Css.px 0
-                ]
+            [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
+            , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
+            , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
+            , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
+            , StyledEvents.onMouseUp MouseUp
+            , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
             ]
 
 
-viewRect : CameraGeometry -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
-viewRect cameraGeometry behaviour rect =
+viewLayer : CameraGeometry -> Int -> Layer -> Maybe { depth : Float, svg : SvgStyled.Svg Msg }
+viewLayer camera index { plane, spans } =
+    let
+        depth =
+            Camera3d.viewpoint camera.camera
+                |> Viewpoint3d.eyePoint
+                |> Point3d.signedDistanceFrom (SketchPlane3d.toPlane plane)
+                |> Length.inMeters
+                |> abs
+
+        fade =
+            (1.4 - depth * 1.3)
+                |> clamp 0 1
+                |> sqrt
+    in
+    if fade == 0 then
+        Nothing
+
+    else
+        let
+            hue =
+                hueFromIndex index
+
+            svg =
+                spans
+                    |> List.filterMap (viewSpan camera (Focusable index <| theme.lighter hue fade))
+                    |> SvgStyled.g
+                        [ SvgAttr.css
+                            [ Css.fill <| theme.light hue fade
+                            , Css.margin <| Css.px 0
+                            ]
+                        ]
+        in
+        Just { depth = depth, svg = svg }
+
+
+viewSpan : CameraGeometry -> SvgBehaviour -> Span -> Maybe (SvgStyled.Svg Msg)
+viewSpan cameraGeometry behaviour { rect, text } =
     let
         viewPlane =
             cameraGeometry.camera
@@ -528,9 +552,6 @@ viewRect cameraGeometry behaviour rect =
     in
     if Rectangle3d.vertices rect |> List.all (inFrontOf viewPlane) then
         let
-            cornerRadius =
-                Length.centimeters 0.15
-
             path =
                 rect
                     |> Rectangle3d.edges
@@ -542,6 +563,8 @@ viewRect cameraGeometry behaviour rect =
                     Focusable layerIndex highlightColour ->
                         [ Svg.Styled.Events.onClick <| ClickedTo layerIndex <| Rectangle3d.centerPoint rect
                         , Svg.Styled.Events.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
+                        , Svg.Styled.Events.on "mouseover" <| coordinateDecoder "offset" <| MouseOverSpan text
+                        , Svg.Styled.Events.onMouseOut MouseOutSpan
                         , SvgAttr.css
                             [ Css.cursor Css.pointer
                             , Css.hover
@@ -562,9 +585,15 @@ viewRect cameraGeometry behaviour rect =
         Nothing
 
 
-viewFocusRect : CameraGeometry -> Float -> Rect -> SvgStyled.Svg msg
-viewFocusRect cameraGeometry hue rect =
+viewFocusRect : CameraGeometry -> Int -> SourcePlane -> SvgStyled.Svg msg
+viewFocusRect cameraGeometry index plane =
     let
+        rect =
+            layerDimensions
+                |> Vector2d.components
+                |> Rectangle2d.centeredOn (Frame2d.atPoint centrePoint)
+                |> Rectangle3d.on plane
+
         viewPlane =
             cameraGeometry.camera
                 |> Camera3d.viewpoint
@@ -590,7 +619,7 @@ viewFocusRect cameraGeometry hue rect =
     in
     SvgStyled.path
         [ SvgAttr.d <| SvgPath.toString [ path ]
-        , SvgAttr.stroke <| "hsl(" ++ String.fromFloat hue ++ ", 60%, 50%"
+        , SvgAttr.stroke <| hsluvToSvgColor (hueFromIndex index) 0.7 0.5
         , SvgAttr.strokeWidth "2"
         , SvgAttr.strokeDasharray "8 6"
         , SvgAttr.fillOpacity "0"
@@ -764,35 +793,9 @@ type alias PlaneRect =
     Rectangle2d Length.Meters SourceCoordinates
 
 
-rectFrom : SourcePoint -> SourcePoint -> PlaneRect
-rectFrom originPoint endPoint =
-    let
-        halfHeight =
-            Vector2d.centimeters 0 0.6
-
-        length =
-            Vector2d.from originPoint endPoint
-                |> Vector2d.xComponent
-                |> flip Vector2d.xy (Length.meters 0)
-
-        topLeft =
-            originPoint
-                |> Point2d.translateBy (Vector2d.reverse halfHeight)
-
-        bottomRight =
-            originPoint
-                |> Point2d.translateBy (halfHeight |> Vector2d.plus length)
-    in
-    Rectangle2d.from topLeft bottomRight
-
-
-raycastTo : SourcePlane -> CameraGeometry -> Float -> ( Float, Float ) -> Maybe SourcePoint
-raycastTo sourcePlane { camera, screenRect } pixelRatio ( x, y ) =
-    Point2d.pixels x y
-        |> Point2d.at_ (resolution pixelRatio)
-        |> Camera3d.ray camera screenRect
-        |> Axis3d.intersectionWithPlane (SketchPlane3d.toPlane sourcePlane)
-        |> Maybe.map (Point3d.projectInto sourcePlane)
+dragAngle : Float -> Angle -> Angle
+dragAngle delta =
+    Angle.inDegrees >> (+) (delta * dragCoefficient) >> Angle.degrees
 
 
 projectEdge : CameraGeometry -> WorldLine -> ScreenLine
@@ -849,6 +852,60 @@ makeViewpoint { focus, azimuth, elevation } =
 
 
 
+-- COLOURS
+
+
+theme =
+    { dark = Css.hex "13151f"
+    , accent = Css.hex "9e3354"
+    , light = \hue fade -> hsluvToCssColor hue (0.3 * fade + 0.2) (0.6 * fade + 0.1)
+    , lighter = \hue fade -> hsluvToCssColor hue (0.3 * fade + 0.3) (0.7 * fade + 0.1)
+    , initialLayerHue = 90
+    }
+
+
+hsluvToCssColor : Float -> Float -> Float -> Css.Color
+hsluvToCssColor h s l =
+    let
+        { red, green, blue } =
+            HSLuv.hsluv
+                { hue = h / 255
+                , saturation = s
+                , lightness = l
+                , alpha = 1
+                }
+                |> HSLuv.toRgba
+
+        toInt =
+            (*) 255 >> floor
+    in
+    Css.rgb
+        (toInt red)
+        (toInt green)
+        (toInt blue)
+
+
+hsluvToSvgColor : Float -> Float -> Float -> String
+hsluvToSvgColor h s l =
+    HSLuv.hsluv
+        { hue = h / 255
+        , saturation = s
+        , lightness = l
+        , alpha = 1
+        }
+        |> HSLuv.toColor
+        |> Color.toCssString
+
+
+hueFromIndex : Int -> Float
+hueFromIndex i =
+    theme.initialLayerHue
+        |> (+) (i * layerHueSpacing)
+        |> modBy 256
+        |> toFloat
+
+
+
 -- HELPERS
 
 
@@ -872,6 +929,20 @@ concatMapCarry f =
     List.foldl mapCarrier ( Nothing, [] )
 
 
+indexedFilterMap : (Int -> a -> Maybe b) -> List a -> List b
+indexedFilterMap f =
+    List.foldl
+        (\item ( index, result ) ->
+            f index item
+                |> Maybe.map (flip (::) result)
+                |> Maybe.withDefault result
+                |> Tuple.pair (index + 1)
+        )
+        ( 0, [] )
+        >> Tuple.second
+        >> List.reverse
+
+
 ziplistInsertBefore : a -> ZipList a -> ZipList a
 ziplistInsertBefore x ziplist =
     ZipList.insertBefore x ziplist
@@ -893,27 +964,13 @@ reverse key =
             Left
 
 
-sign : Int -> Int
-sign n =
-    n // abs n
-
-
 
 -- CONSTANTS
 
 
-theme =
-    { dark = Css.hex "13151f"
-    , accent = Css.hex "9e3354"
-    , light = \hue -> Css.hsl hue 0.3 0.6
-    , lighter = \hue -> Css.hsl hue 0.7 0.75
-    , initialLayerHue = 130
-    }
-
-
 verticalFieldOfView : Angle
 verticalFieldOfView =
-    Angle.degrees 50
+    Angle.degrees 70
 
 
 transitionDuration : Duration
@@ -923,29 +980,52 @@ transitionDuration =
 
 viewDistance : Length.Length
 viewDistance =
-    Length.centimeters 25
+    Length.centimeters 20
 
 
-planeSpacing : Angle
+planeSpacing : Length.Length
 planeSpacing =
-    Angle.degrees 25
+    Length.centimeters 12
 
 
-planeFanAxis : Axis3d Length.Meters World
-planeFanAxis =
-    Axis3d.y |> Axis3d.translateBy (Vector3d.centimeters -32 0 0)
+scaling =
+    0.4
+
+
+layerDimensions : Vector2d Length.Meters SourceCoordinates
+layerDimensions =
+    Vector2d.millimeters (954 * scaling) (792 * scaling)
+
+
+centrePoint : SourcePoint
+centrePoint =
+    Vector2d.interpolateFrom Vector2d.zero layerDimensions 0.5
+        |> Vector2d.components
+        |> uncurry Point2d.xy
+
+
+cornerRadius =
+    Length.centimeters 0.1
 
 
 layerHueSpacing =
-    40
+    30
 
 
-wheelCoefficient =
+dragCoefficient =
     0.3
+
+
+movementDecay =
+    0.9 ^ (1 / 25)
 
 
 screenMargins =
     10
+
+
+zeroMeters =
+    Length.meters 0
 
 
 
