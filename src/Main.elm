@@ -19,7 +19,6 @@ import Html.Styled.Attributes exposing (css)
 import Html.Styled.Events as StyledEvents
 import Html.Styled.Lazy
 import Json.Decode as Decode exposing (Decoder)
-import Keyboard.Event
 import Length
 import LineSegment2d exposing (LineSegment2d)
 import LineSegment3d exposing (LineSegment3d)
@@ -106,7 +105,6 @@ type Msg
     | AnimationTick Float
     | WindowResize Int Int
     | ArrowKeyPressed ArrowKey
-    | CtrlZ
     | NoOp
 
 
@@ -193,11 +191,7 @@ spanToSpan plane { x, y, width, height, text } =
 subscriptions : Model -> Sub Msg
 subscriptions { transition, drag } =
     Sub.batch
-        [ Browser.Events.onKeyDown <|
-            Decode.oneOf
-                [ ctrlZDecoder CtrlZ
-                , arrowKeyDecoder ArrowKeyPressed
-                ]
+        [ Browser.Events.onKeyDown <| arrowKeyDecoder ArrowKeyPressed
         , Browser.Events.onResize WindowResize
         , case drag of
             Momentum _ _ ->
@@ -211,17 +205,6 @@ subscriptions { transition, drag } =
                     Nothing ->
                         Sub.none
         ]
-
-
-ctrlZDecoder : msg -> Decoder msg
-ctrlZDecoder msg =
-    Keyboard.Event.considerKeyboardEvent <|
-        \{ ctrlKey, metaKey, key } ->
-            if (metaKey || ctrlKey) && key == Just "z" then
-                Just msg
-
-            else
-                Nothing
 
 
 arrowKeyDecoder : (ArrowKey -> msg) -> Decoder msg
@@ -372,18 +355,6 @@ update msg model =
                 { model | layers = shift model.layers |> Maybe.withDefault (insert newLayer model.layers) }
                     |> transitionFocusTo newFocus
 
-            CtrlZ ->
-                let
-                    currentLayer =
-                        ZipList.current model.layers
-                in
-                { model
-                    | layers =
-                        ZipList.replace
-                            { currentLayer | spans = List.drop 1 currentLayer.spans }
-                            model.layers
-                }
-
 
 tickMomentum : Float -> Model -> Model
 tickMomentum delta model =
@@ -479,7 +450,6 @@ view model =
                 [ "Scroll or click and drag to look around."
                 , "Click a rectangle to go there."
                 , "Hover over a rectangle to see text."
-                , "Ctrl+Z to undo."
                 ]
             ]
         , Html.Styled.Lazy.lazy viewSvg model
