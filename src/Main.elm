@@ -1,7 +1,6 @@
 module Main exposing (..)
 
 import Angle exposing (Angle)
-import Axis3d exposing (Axis3d)
 import Basics.Extra exposing (..)
 import Browser
 import Browser.Events
