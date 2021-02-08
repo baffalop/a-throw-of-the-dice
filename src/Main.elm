@@ -532,8 +532,10 @@ viewLayer camera index { plane, spans } =
         let
             hue =
                 hueFromIndex index
-
-            svg =
+        in
+        Just
+            { depth = depth
+            , svg =
                 spans
                     |> List.filterMap (viewSpan camera (Focusable index <| theme.lighter hue fade))
                     |> SvgStyled.g
@@ -542,8 +544,7 @@ viewLayer camera index { plane, spans } =
                             , Css.margin <| Css.px 0
                             ]
                         ]
-        in
-        Just { depth = depth, svg = svg }
+            }
 
 
 viewSpan : CameraGeometry -> SvgBehaviour -> Span -> Maybe (SvgStyled.Svg Msg)
