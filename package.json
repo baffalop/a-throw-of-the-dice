@@ -6,5 +6,8 @@
   "devDependencies": {
     "elm-hot": "^1.1.5",
     "node-elm-compiler": "^5.0.5"
+  },
+  "dependencies": {
+    "elm-pep": "^1.0.6"
   }
 }
