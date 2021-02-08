@@ -22,10 +22,13 @@
             "ianmackenzie/elm-geometry": "3.6.0",
             "ianmackenzie/elm-units": "2.7.0",
             "kuon/elm-hsluv": "3.0.2",
+            "mpizenberg/elm-pointer-events": "4.0.2",
             "rtfeldman/elm-css": "16.1.0"
         },
         "indirect": {
             "SwiftsNamesake/proper-keyboard": "4.0.0",
+            "elm/bytes": "1.0.8",
+            "elm/file": "1.0.5",
             "elm/parser": "1.1.0",
             "elm/time": "1.0.0",
             "elm/url": "1.0.0",
