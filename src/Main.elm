@@ -14,6 +14,8 @@ import Ease
 import Frame2d
 import HSLuv exposing (HSLuv)
 import Html exposing (Html)
+import Html.Events.Extra.Mouse as Mouse
+import Html.Events.Extra.Pointer as Pointer
 import Html.Styled as Styled
 import Html.Styled.Attributes exposing (css)
 import Html.Styled.Events as StyledEvents
@@ -95,9 +97,9 @@ type alias Transition =
 
 
 type Msg
-    = MouseDown Float Float
-    | MouseUp
-    | MouseMove Float Float
+    = PointerDown Float Float
+    | PointerUp
+    | PointerMove Float Float
     | Wheel Float Float
     | ClickedTo Int WorldPoint
     | MouseOverSpan String Float Float
@@ -231,13 +233,13 @@ update msg model =
             NoOp ->
                 model
 
-            MouseDown x y ->
+            PointerDown x y ->
                 { model
                     | drag = Grabbed { x = x, y = y, lastX = x, lastY = y }
                     , hover = Nothing
                 }
 
-            MouseMove x y ->
+            PointerMove x y ->
                 let
                     withMappedHover =
                         { model | hover = Maybe.map (\hover -> { hover | mouseX = x, mouseY = y }) model.hover }
@@ -246,21 +248,21 @@ update msg model =
                     Grabbed grab ->
                         let
                             ( deltaX, deltaY ) =
-                                ( x - grab.x, y - grab.y )
+                                ( grab.x - x, grab.y - y )
                         in
                         { withMappedHover
                             | drag = Grabbed { lastX = grab.x, lastY = grab.y, x = x, y = y }
                             , azimuth = dragAngle deltaX model.azimuth
-                            , elevation = dragAngle -deltaY model.elevation
+                            , elevation = dragAngle deltaY model.elevation
                         }
 
                     _ ->
                         withMappedHover
 
-            MouseUp ->
+            PointerUp ->
                 case model.drag of
                     Grabbed { lastX, lastY, x, y } ->
-                        { model | drag = Momentum (x - lastX) (y - lastY) }
+                        { model | drag = Momentum (lastX - x) (lastY - y) }
 
                     _ ->
                         model
@@ -378,7 +380,7 @@ tickMomentum delta model =
                     else
                         Momentum decayedX decayedY
                 , azimuth = dragAngle momentumX model.azimuth
-                , elevation = dragAngle -momentumY model.elevation
+                , elevation = dragAngle momentumY model.elevation
             }
 
         _ ->
@@ -499,9 +501,11 @@ viewSvg model =
         |> SvgStyled.svg
             [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
             , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
-            , StyledEvents.on "mousemove" <| coordinateDecoder "offset" MouseMove
-            , StyledEvents.on "mousedown" <| coordinateDecoder "offset" MouseDown
-            , StyledEvents.onMouseUp MouseUp
+            , SvgAttr.css [ Css.touchAction Css.none ]
+            , Html.Styled.Attributes.fromUnstyled <| Pointer.onDown <| .pointer >> .offsetPos >> uncurry PointerDown
+            , Html.Styled.Attributes.fromUnstyled <| Pointer.onMove <| .pointer >> .offsetPos >> uncurry PointerMove
+            , Html.Styled.Attributes.fromUnstyled <| Pointer.onUp <| always PointerUp
+            , StyledEvents.onMouseUp PointerUp
             , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
             ]
 
@@ -563,7 +567,7 @@ viewSpan cameraGeometry behaviour { rect, text } =
                     Focusable layerIndex highlightColour ->
                         [ Svg.Styled.Events.onClick <| ClickedTo layerIndex <| Rectangle3d.centerPoint rect
                         , Svg.Styled.Events.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
-                        , Svg.Styled.Events.on "mouseover" <| coordinateDecoder "offset" <| MouseOverSpan text
+                        , SvgAttr.fromUnstyled <| Mouse.onOver <| uncurry (MouseOverSpan text) << .offsetPos
                         , Svg.Styled.Events.onMouseOut MouseOutSpan
                         , SvgAttr.css
                             [ Css.cursor Css.pointer
