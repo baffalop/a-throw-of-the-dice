@@ -248,12 +248,12 @@ update msg model =
                     Grabbed grab ->
                         let
                             ( deltaX, deltaY ) =
-                                ( grab.x - x, grab.y - y )
+                                ( x - grab.x, y - grab.y )
                         in
                         { withMappedHover
                             | drag = Grabbed { lastX = grab.x, lastY = grab.y, x = x, y = y }
                             , azimuth = dragAngle deltaX model.azimuth
-                            , elevation = dragAngle deltaY model.elevation
+                            , elevation = dragAngle -deltaY model.elevation
                         }
 
                     _ ->
@@ -262,7 +262,7 @@ update msg model =
             PointerUp ->
                 case model.drag of
                     Grabbed { lastX, lastY, x, y } ->
-                        { model | drag = Momentum (lastX - x) (lastY - y) }
+                        { model | drag = Momentum (x - lastX) (y - lastY) }
 
                     _ ->
                         model
@@ -380,7 +380,7 @@ tickMomentum delta model =
                     else
                         Momentum decayedX decayedY
                 , azimuth = dragAngle momentumX model.azimuth
-                , elevation = dragAngle momentumY model.elevation
+                , elevation = dragAngle -momentumY model.elevation
             }
 
         _ ->
@@ -502,8 +502,8 @@ viewSvg model =
             [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
             , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
             , SvgAttr.css [ Css.touchAction Css.none ]
-            , Html.Styled.Attributes.fromUnstyled <| Pointer.onDown <| .pointer >> .offsetPos >> uncurry PointerDown
-            , Html.Styled.Attributes.fromUnstyled <| Pointer.onMove <| .pointer >> .offsetPos >> uncurry PointerMove
+            , Html.Styled.Attributes.fromUnstyled <| Pointer.onDown <| uncurry PointerDown << .offsetPos << .pointer
+            , Html.Styled.Attributes.fromUnstyled <| Pointer.onMove <| uncurry PointerMove << .offsetPos << .pointer
             , Html.Styled.Attributes.fromUnstyled <| Pointer.onUp <| always PointerUp
             , StyledEvents.onMouseUp PointerUp
             , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
