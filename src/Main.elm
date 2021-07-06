@@ -67,7 +67,6 @@ type alias Model =
     , transition : Maybe Transition
     , hover : Maybe { text : String, mouseX : Float, mouseY : Float }
     , screenDimensions : ( Int, Int )
-    , devicePixelRatio : Float
     }
 
 
@@ -126,8 +125,8 @@ type ArrowKey
     | Right
 
 
-init : { devicePixelRatio : Float, screenDimensions : ( Int, Int ) } -> ( Model, Cmd msg )
-init { devicePixelRatio, screenDimensions } =
+init : { screenDimensions : ( Int, Int ) } -> ( Model, Cmd msg )
+init { screenDimensions } =
     let
         sourcePlane =
             SketchPlane3d.xy
@@ -140,7 +139,6 @@ init { devicePixelRatio, screenDimensions } =
     , transition = Nothing
     , hover = Nothing
     , screenDimensions = screenDimensions
-    , devicePixelRatio = devicePixelRatio
     }
         |> withNoCmd
 
@@ -1042,13 +1040,6 @@ makeScreenRectangle =
     Tuple.mapBoth (toFloat >> Length.cssPixels) (toFloat >> Length.cssPixels)
         >> uncurry Point2d.xy
         >> Rectangle2d.from Point2d.origin
-
-
-resolution : Float -> Quantity.Quantity Float (Quantity.Rate Pixels.Pixels Length.Meters)
-resolution ratio =
-    (48 * ratio)
-        |> Pixels.pixels
-        |> Quantity.per (Length.inches 1)
 
 
 subtractScreenMargins ( x, y ) =
