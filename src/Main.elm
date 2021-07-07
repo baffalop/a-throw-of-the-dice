@@ -60,7 +60,7 @@ main =
 
 type alias Model =
     { layers : ZipList Layer
-    , focusedSpan : Maybe Int
+    , focusedSpan : Maybe SpanPointer
     , focus : WorldPoint
     , azimuth : Angle
     , elevation : Angle
@@ -83,7 +83,7 @@ type alias Span =
     }
 
 
-type alias SpanLocator =
+type alias SpanPointer =
     { layer : Int
     , span : Int
     }
@@ -107,7 +107,7 @@ type Msg
     | PointerUp
     | PointerMove Float Float
     | Wheel Float Float
-    | ClickedTo SpanLocator
+    | ClickedTo SpanPointer
     | MouseOverSpan String Float Float
     | MouseOutSpan
     | AnimationTick Float
@@ -302,7 +302,7 @@ update msg model =
                                     model.layers
                                         |> ZipList.goToIndex locator.layer
                                         |> Maybe.withDefault model.layers
-                                , focusedSpan = Just locator.span
+                                , focusedSpan = Just locator
                             }
                                 |> transitionFocusTo newFocus
 
@@ -374,7 +374,7 @@ update msg model =
                     |> transitionFocusTo newFocus
 
 
-findSpan : SpanLocator -> ZipList Layer -> Maybe Span
+findSpan : SpanPointer -> ZipList Layer -> Maybe Span
 findSpan { layer, span } =
     ZipList.goToIndex layer
         >> Maybe.andThen (ZipList.current >> .spans >> List.Extra.getAt span)
@@ -450,8 +450,9 @@ transitionFocusTo focus model =
 -- VIEW
 
 
-type SvgBehaviour
-    = Focusable SpanLocator Css.Color
+type SpanState
+    = Focusable SpanPointer Css.Color
+    | Focused Css.Color
     | Inert
 
 
@@ -516,7 +517,7 @@ viewSvg model =
     in
     model.layers
         |> ZipList.toList
-        |> indexedFilterMap (viewLayer camera)
+        |> indexedFilterMap (viewLayer camera model.focusedSpan)
         |> List.sortBy (negate << .depth)
         |> List.map .svg
         |> (::) (viewFocusRect camera currentIndex currentLayer.plane)
@@ -532,8 +533,8 @@ viewSvg model =
             ]
 
 
-viewLayer : CameraGeometry -> Int -> Layer -> Maybe { depth : Float, svg : SvgStyled.Svg Msg }
-viewLayer camera layerIndex { plane, spans } =
+viewLayer : CameraGeometry -> Maybe SpanPointer -> Int -> Layer -> Maybe { depth : Float, svg : SvgStyled.Svg Msg }
+viewLayer camera focusedSpan layerIndex { plane, spans } =
     let
         depth =
             Camera3d.viewpoint camera.camera
@@ -561,8 +562,19 @@ viewLayer camera layerIndex { plane, spans } =
                 spans
                     |> indexedFilterMap
                         (\spanIndex ->
+                            let
+                                colour =
+                                    theme.lighter hue fade
+
+                                currentPointer =
+                                    SpanPointer layerIndex spanIndex
+                            in
                             viewSpan camera <|
-                                Focusable { layer = layerIndex, span = spanIndex } (theme.lighter hue fade)
+                                if focusedSpan == Just currentPointer then
+                                    Focused colour
+
+                                else
+                                    Focusable currentPointer colour
                         )
                     |> SvgStyled.g
                         [ SvgAttr.css
@@ -573,8 +585,8 @@ viewLayer camera layerIndex { plane, spans } =
             }
 
 
-viewSpan : CameraGeometry -> SvgBehaviour -> Span -> Maybe (SvgStyled.Svg Msg)
-viewSpan cameraGeometry behaviour { rect, text } =
+viewSpan : CameraGeometry -> SpanState -> Span -> Maybe (SvgStyled.Svg Msg)
+viewSpan cameraGeometry state { rect, text } =
     let
         viewPlane =
             cameraGeometry.camera
@@ -590,7 +602,7 @@ viewSpan cameraGeometry behaviour { rect, text } =
                     |> roundCorners cornerRadius
 
             attributes =
-                case behaviour of
+                case state of
                     Focusable locator highlightColour ->
                         [ Svg.Styled.Events.onClick <| ClickedTo locator
                         , Svg.Styled.Events.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
@@ -601,6 +613,12 @@ viewSpan cameraGeometry behaviour { rect, text } =
                             , Css.hover
                                 [ Css.fill highlightColour
                                 ]
+                            ]
+                        ]
+
+                    Focused colour ->
+                        [ SvgAttr.css
+                            [ Css.fill colour
                             ]
                         ]
 
