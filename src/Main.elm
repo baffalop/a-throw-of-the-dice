@@ -60,6 +60,7 @@ main =
 
 type alias Model =
     { layers : ZipList Layer
+    , focusedSpan : Maybe Int
     , focus : WorldPoint
     , azimuth : Angle
     , elevation : Angle
@@ -82,6 +83,12 @@ type alias Span =
     }
 
 
+type alias SpanLocator =
+    { layer : Int
+    , span : Int
+    }
+
+
 type alias DrawnRect =
     { originPoint : SourcePoint
     , rect : PlaneRect
@@ -100,7 +107,7 @@ type Msg
     | PointerUp
     | PointerMove Float Float
     | Wheel Float Float
-    | ClickedTo Int WorldPoint
+    | ClickedTo SpanLocator
     | MouseOverSpan String Float Float
     | MouseOutSpan
     | AnimationTick Float
@@ -133,6 +140,7 @@ init { screenDimensions } =
     in
     { layers = initLayers sourcePlane <| Poem.pair Poem.pages
     , focus = centrePoint |> Point3d.on sourcePlane
+    , focusedSpan = Nothing
     , azimuth = Angle.degrees -90
     , elevation = Angle.degrees 180
     , drag = Stationary
@@ -275,18 +283,28 @@ update msg model =
                     , elevation = add deltaY model.elevation
                 }
 
-            ClickedTo layerIndex newFocus ->
-                if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
-                    model
+            ClickedTo locator ->
+                case findSpan locator model.layers of
+                    Nothing ->
+                        model
 
-                else
-                    { model
-                        | layers =
-                            model.layers
-                                |> ZipList.goToIndex layerIndex
-                                |> Maybe.withDefault model.layers
-                    }
-                        |> transitionFocusTo newFocus
+                    Just span ->
+                        let
+                            newFocus =
+                                Rectangle3d.centerPoint span.rect
+                        in
+                        if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
+                            model
+
+                        else
+                            { model
+                                | layers =
+                                    model.layers
+                                        |> ZipList.goToIndex locator.layer
+                                        |> Maybe.withDefault model.layers
+                                , focusedSpan = Just locator.span
+                            }
+                                |> transitionFocusTo newFocus
 
             MouseOverSpan text x y ->
                 case model.transition of
@@ -354,6 +372,12 @@ update msg model =
                 in
                 { model | layers = shift model.layers |> Maybe.withDefault (insert newLayer model.layers) }
                     |> transitionFocusTo newFocus
+
+
+findSpan : SpanLocator -> ZipList Layer -> Maybe Span
+findSpan { layer, span } =
+    ZipList.goToIndex layer
+        >> Maybe.andThen (ZipList.current >> .spans >> List.Extra.getAt span)
 
 
 tickMomentum : Float -> Model -> Model
@@ -427,7 +451,7 @@ transitionFocusTo focus model =
 
 
 type SvgBehaviour
-    = Focusable Int Css.Color
+    = Focusable SpanLocator Css.Color
     | Inert
 
 
@@ -452,7 +476,7 @@ view model =
                 , "Hover over a rectangle to see text."
                 ]
             ]
-        , Html.Styled.Lazy.lazy viewSvg model
+        , Styled.main_ [] [ Html.Styled.Lazy.lazy viewSvg model ]
         , case ( model.transition, model.hover ) of
             ( Nothing, Just { text, mouseX, mouseY } ) ->
                 Styled.div
@@ -509,7 +533,7 @@ viewSvg model =
 
 
 viewLayer : CameraGeometry -> Int -> Layer -> Maybe { depth : Float, svg : SvgStyled.Svg Msg }
-viewLayer camera index { plane, spans } =
+viewLayer camera layerIndex { plane, spans } =
     let
         depth =
             Camera3d.viewpoint camera.camera
@@ -529,13 +553,17 @@ viewLayer camera index { plane, spans } =
     else
         let
             hue =
-                hueFromIndex index
+                hueFromIndex layerIndex
         in
         Just
             { depth = depth
             , svg =
                 spans
-                    |> List.filterMap (viewSpan camera (Focusable index <| theme.lighter hue fade))
+                    |> indexedFilterMap
+                        (\spanIndex ->
+                            viewSpan camera <|
+                                Focusable { layer = layerIndex, span = spanIndex } (theme.lighter hue fade)
+                        )
                     |> SvgStyled.g
                         [ SvgAttr.css
                             [ Css.fill <| theme.light hue fade
@@ -563,8 +591,8 @@ viewSpan cameraGeometry behaviour { rect, text } =
 
             attributes =
                 case behaviour of
-                    Focusable layerIndex highlightColour ->
-                        [ Svg.Styled.Events.onClick <| ClickedTo layerIndex <| Rectangle3d.centerPoint rect
+                    Focusable locator highlightColour ->
+                        [ Svg.Styled.Events.onClick <| ClickedTo locator
                         , Svg.Styled.Events.stopPropagationOn "mousedown" <| Decode.succeed ( NoOp, True )
                         , SvgAttr.fromUnstyled <| Mouse.onOver <| uncurry (MouseOverSpan text) << .offsetPos
                         , Svg.Styled.Events.onMouseOut MouseOutSpan
