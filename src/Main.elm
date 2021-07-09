@@ -27,7 +27,6 @@ import LineSegment3d exposing (LineSegment3d)
 import LineSegment3d.Projection
 import List.Extra
 import Path.LowLevel as SvgPath exposing (DrawTo(..), Mode(..), MoveTo(..))
-import Pixels
 import Poem
 import Point2d exposing (Point2d)
 import Point3d exposing (Point3d)
@@ -283,28 +282,28 @@ update msg model =
                     , elevation = add deltaY model.elevation
                 }
 
-            ClickedTo locator ->
-                case findSpan locator model.layers of
-                    Nothing ->
-                        model
+            ClickedTo pointer ->
+                findSpan pointer model.layers
+                    |> Maybe.map
+                        (\span ->
+                            let
+                                newFocus =
+                                    Rectangle3d.centerPoint span.rect
+                            in
+                            if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
+                                model
 
-                    Just span ->
-                        let
-                            newFocus =
-                                Rectangle3d.centerPoint span.rect
-                        in
-                        if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
-                            model
-
-                        else
-                            { model
-                                | layers =
-                                    model.layers
-                                        |> ZipList.goToIndex locator.layer
-                                        |> Maybe.withDefault model.layers
-                                , focusedSpan = Just locator
-                            }
-                                |> transitionFocusTo newFocus
+                            else
+                                { model
+                                    | layers =
+                                        model.layers
+                                            |> ZipList.goToIndex pointer.layer
+                                            |> Maybe.withDefault model.layers
+                                    , focusedSpan = Just pointer
+                                }
+                                    |> transitionFocusTo newFocus
+                        )
+                    |> Maybe.withDefault model
 
             MouseOverSpan text x y ->
                 case model.transition of
@@ -478,26 +477,53 @@ view model =
                 ]
             ]
         , Styled.main_ [] [ Html.Styled.Lazy.lazy viewSvg model ]
-        , case ( model.transition, model.hover ) of
-            ( Nothing, Just { text, mouseX, mouseY } ) ->
-                Styled.div
-                    [ css
-                        [ Css.position Css.absolute
-                        , Css.left <| Css.px mouseX
-                        , Css.transform <| Css.translateX <| Css.pct -50
-                        , Css.top <| Css.px <| mouseY - 50
-                        , Css.padding <| Css.px 6
-                        , Css.backgroundColor theme.accent
-                        , Css.color theme.dark
-                        , Css.fontFamilies [ "Fira Code", "monospace" ]
-                        , Css.pointerEvents Css.none
-                        ]
-                    ]
-                    [ Styled.text text ]
-
-            _ ->
-                Styled.text ""
         ]
+            ++ viewLegends model
+
+
+viewLegends : Model -> List (Styled.Html msg)
+viewLegends ({ transition, hover, focusedSpan, layers } as model) =
+    [ (if transition == Nothing then
+        hover
+
+       else
+        Nothing
+      )
+        |> maybeEl
+            (\{ text, mouseX, mouseY } ->
+                Just <| viewLegend text ( mouseX, mouseY )
+            )
+    , focusedSpan
+        |> maybeEl
+            (\pointer ->
+                findSpan pointer layers
+                    |> Maybe.map
+                        (\{ text, rect } ->
+                            Rectangle3d.centerPoint rect
+                                |> projectPoint (makeCameraGeometry model)
+                                |> svgCoord
+                                |> viewLegend text
+                        )
+            )
+    ]
+
+
+viewLegend : String -> ( Float, Float ) -> Styled.Html msg
+viewLegend text ( x, y ) =
+    Styled.div
+        [ css
+            [ Css.position Css.absolute
+            , Css.left <| Css.px x
+            , Css.transform <| Css.translateX <| Css.pct -50
+            , Css.top <| Css.px <| y - 50
+            , Css.padding <| Css.px 6
+            , Css.backgroundColor theme.accent
+            , Css.color theme.dark
+            , Css.fontFamilies [ "Fira Code", "monospace" ]
+            , Css.pointerEvents Css.none
+            ]
+        ]
+        [ Styled.text text ]
 
 
 viewSvg : Model -> Styled.Html Msg
@@ -1011,6 +1037,11 @@ reverse key =
 
         Right ->
             Left
+
+
+maybeEl : (a -> Maybe (Styled.Html msg)) -> Maybe a -> Styled.Html msg
+maybeEl mapper =
+    Maybe.andThen mapper >> Maybe.withDefault (Styled.text "")
 
 
 
