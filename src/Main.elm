@@ -698,23 +698,23 @@ grow direction layers =
 
 
 type alias SourcePlane =
-    SketchPlane3d Length.Meters World { defines : SourceCoordinates }
+    SketchPlane3d Length.Meters WorldCoordinates { defines : SourceCoordinates }
 
 
 type alias ViewPlane =
-    SketchPlane3d Length.Meters World { defines : ScreenCoordinates }
+    SketchPlane3d Length.Meters WorldCoordinates { defines : ScreenCoordinates }
 
 
 type SourceCoordinates
-    = SourceCoordinates
+    = SourceCoordinates Never
 
 
 type ScreenCoordinates
-    = ScreenCoordinates
+    = ScreenCoordinates Never
 
 
-type World
-    = World
+type WorldCoordinates
+    = WorldCoordinates Never
 
 
 type alias SourcePoint =
@@ -722,11 +722,11 @@ type alias SourcePoint =
 
 
 type alias WorldPoint =
-    Point3d Length.Meters World
+    Point3d Length.Meters WorldCoordinates
 
 
 type alias WorldLine =
-    LineSegment3d Length.Meters World
+    LineSegment3d Length.Meters WorldCoordinates
 
 
 type alias ScreenLine =
@@ -738,11 +738,11 @@ type alias ScreenPoint =
 
 
 type alias Camera =
-    Camera3d Length.Meters World
+    Camera3d Length.Meters WorldCoordinates
 
 
 type alias Viewpoint =
-    Viewpoint3d Length.Meters World
+    Viewpoint3d Length.Meters WorldCoordinates
 
 
 type alias CameraGeometry =
@@ -752,7 +752,7 @@ type alias CameraGeometry =
 
 
 type alias Rect =
-    Rectangle3d Length.Meters World
+    Rectangle3d Length.Meters WorldCoordinates
 
 
 type alias PlaneRect =
@@ -821,7 +821,7 @@ isFacingRightOf viewpoint =
         >> Maybe.withDefault False
 
 
-zVectorFromDirection : Direction -> Vector3d Length.Meters World
+zVectorFromDirection : Direction -> Vector3d Length.Meters WorldCoordinates
 zVectorFromDirection direction =
     let
         multiplier =
@@ -846,7 +846,7 @@ makeCameraGeometry ({ focus, azimuth, elevation, screenDimensions } as model) =
     }
 
 
-makeViewpoint : { a | focus : WorldPoint, azimuth : Angle, elevation : Angle } -> Viewpoint3d Length.Meters World
+makeViewpoint : { a | focus : WorldPoint, azimuth : Angle, elevation : Angle } -> Viewpoint3d Length.Meters WorldCoordinates
 makeViewpoint { focus, azimuth, elevation } =
     Viewpoint3d.orbit
         { focalPoint = focus
