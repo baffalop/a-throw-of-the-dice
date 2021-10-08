@@ -58,7 +58,7 @@ main =
 
 
 type alias Model =
-    { layers : Layers
+    { world : World
     , centrePoint : SourcePoint
     , focus : WorldPoint
     , transition : Maybe Transition
@@ -70,8 +70,10 @@ type alias Model =
     }
 
 
-type alias Layers =
-    ZipList Layer
+type alias World =
+    { origin : Int
+    , layers : ZipList Layer
+    }
 
 
 type alias Layer =
@@ -126,12 +128,15 @@ init { devicePixelRatio, screenDimensions } =
                 (toFloat screenWidth * (13.2 / 1000))
                 (toFloat screenHeight * (10 / 800))
     in
-    { layers =
-        ZipList.singleton
-            { plane = sourcePlane
-            , rects = []
-            , hue = theme.initialLayerHue
-            }
+    { world =
+        { origin = 0
+        , layers =
+            ZipList.singleton
+                { plane = sourcePlane
+                , rects = []
+                , hue = theme.initialLayerHue
+                }
+        }
     , centrePoint = centrePoint
     , focus = centrePoint |> Point3d.on sourcePlane
     , transition = Nothing
@@ -200,7 +205,7 @@ update msg model =
             MouseDown x y ->
                 let
                     currentLayer =
-                        ZipList.current model.layers
+                        ZipList.current model.world.layers
                 in
                 { model
                     | drawnRect =
@@ -222,7 +227,7 @@ update msg model =
                     Just rect ->
                         let
                             currentLayer =
-                                ZipList.current model.layers
+                                getCurrentLayer model.world
                         in
                         { model
                             | drawnRect =
@@ -232,21 +237,19 @@ update msg model =
                         }
 
             MouseUp ->
-                let
-                    currentLayer =
-                        ZipList.current model.layers
-                in
                 { model
                     | drawnRect = Nothing
-                    , layers =
-                        ZipList.replace
-                            { currentLayer
-                                | rects =
-                                    model.drawnRect
-                                        |> Maybe.map (.rect >> Rectangle3d.on currentLayer.plane >> flip (::) currentLayer.rects)
-                                        |> Maybe.withDefault currentLayer.rects
-                            }
-                            model.layers
+                    , world =
+                        mapCurrentLayer
+                            (\({ rects, plane } as current) ->
+                                { current
+                                    | rects =
+                                        model.drawnRect
+                                            |> Maybe.map (.rect >> Rectangle3d.on plane >> flip (::) rects)
+                                            |> Maybe.withDefault rects
+                                }
+                            )
+                            model.world
                 }
 
             Wheel deltaX deltaY ->
@@ -262,12 +265,7 @@ update msg model =
             ClickedTo layerIndex newFocus ->
                 let
                     withLayerSet =
-                        { model
-                            | layers =
-                                model.layers
-                                    |> ZipList.goToIndex layerIndex
-                                    |> Maybe.withDefault model.layers
-                        }
+                        { model | world = model.world |> goToIndex layerIndex }
                 in
                 if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
                     withLayerSet
@@ -303,7 +301,7 @@ update msg model =
             ArrowKeyPressed key ->
                 let
                     planesAreFacingRight =
-                        ZipList.current model.layers
+                        getCurrentLayer model.world
                             |> .plane
                             |> isFacingRightOf (makeViewpoint model)
 
@@ -319,20 +317,16 @@ update msg model =
                 in
                 { model
                     | drawnRect = Nothing
-                    , layers = moveLayer direction model.layers
+                    , world = moveLayer direction model.world
                 }
                     |> transitionFocusTo newFocus
 
             CtrlZ ->
-                let
-                    currentLayer =
-                        ZipList.current model.layers
-                in
                 { model
-                    | layers =
-                        ZipList.replace
-                            { currentLayer | rects = List.drop 1 currentLayer.rects }
-                            model.layers
+                    | world =
+                        mapCurrentLayer
+                            (\current -> { current | rects = List.drop 1 current.rects })
+                            model.world
                 }
 
 
@@ -396,10 +390,10 @@ viewSvg model =
             makeCameraGeometry model
 
         currentLayer =
-            ZipList.current model.layers
+            getCurrentLayer model.world
 
         currentIndex =
-            ZipList.currentIndex model.layers
+            ZipList.currentIndex model.world.layers
 
         orderByDepth =
             if currentLayer.plane |> isFacingAwayFrom (Camera3d.viewpoint camera.camera) then
@@ -424,7 +418,7 @@ viewSvg model =
                     , StyledEvents.onMouseUp MouseUp
                     ]
     in
-    model.layers
+    model.world.layers
         |> ZipList.toList
         |> List.indexedMap
             (\index ->
@@ -651,8 +645,27 @@ svgCoord =
 -- LAYERS
 
 
-moveLayer : Direction -> Layers -> Layers
-moveLayer direction layers =
+getCurrentLayer : World -> Layer
+getCurrentLayer { layers } =
+    ZipList.current layers
+
+
+mapCurrentLayer : (Layer -> Layer) -> World -> World
+mapCurrentLayer f ({ layers } as world) =
+    { world | layers = ZipList.replace (f <| ZipList.current layers) layers }
+
+
+goToIndex : Int -> World -> World
+goToIndex index ({ layers } as world) =
+    { world
+        | layers =
+            ZipList.goToIndex index layers
+                |> Maybe.withDefault layers
+    }
+
+
+moveLayer : Direction -> World -> World
+moveLayer direction world =
     let
         move =
             case direction of
@@ -662,27 +675,33 @@ moveLayer direction layers =
                 Right ->
                     ZipList.maybeJumpForward 1
     in
-    case move layers of
+    case move world.layers of
         Just l ->
-            l
+            { world | layers = l }
 
         Nothing ->
-            grow direction layers
+            grow direction world
 
 
-grow : Direction -> Layers -> Layers
-grow direction layers =
+grow : Direction -> World -> World
+grow direction world =
     let
         currentLayer =
-            ZipList.current layers
+            getCurrentLayer world
 
-        ( insert, multiplier ) =
+        { insert, multiplier, newOrigin } =
             case direction of
                 Left ->
-                    ( ziplistInsertBefore, -1 )
+                    { insert = ziplistInsertBefore
+                    , multiplier = -1
+                    , newOrigin = world.origin + 1
+                    }
 
                 Right ->
-                    ( ZipList.insert, 1 )
+                    { insert = ZipList.insert
+                    , multiplier = 1
+                    , newOrigin = world.origin
+                    }
 
         newLayer =
             { plane = currentLayer.plane |> SketchPlane3d.translateBy (zVectorFromDirection direction)
@@ -690,7 +709,9 @@ grow direction layers =
             , hue = currentLayer.hue + (multiplier * layerHueSpacing) |> floor |> modBy 256 |> toFloat
             }
     in
-    insert newLayer layers
+    { origin = newOrigin
+    , layers = insert newLayer world.layers
+    }
 
 
 
