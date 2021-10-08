@@ -105,7 +105,6 @@ type Msg
     | AnimationTick Float
     | WindowResize Int Int
     | ArrowKeyPressed Direction
-    | CtrlZ
     | NoOp
 
 
@@ -152,11 +151,7 @@ init { devicePixelRatio, screenDimensions } =
 subscriptions : Model -> Sub Msg
 subscriptions { transition } =
     Sub.batch
-        [ Browser.Events.onKeyDown <|
-            Decode.oneOf
-                [ ctrlZDecoder CtrlZ
-                , arrowKeyDecoder ArrowKeyPressed
-                ]
+        [ Browser.Events.onKeyDown <| arrowKeyDecoder ArrowKeyPressed
         , Browser.Events.onResize WindowResize
         , case transition of
             Nothing ->
@@ -165,17 +160,6 @@ subscriptions { transition } =
             Just _ ->
                 Browser.Events.onAnimationFrameDelta AnimationTick
         ]
-
-
-ctrlZDecoder : msg -> Decoder msg
-ctrlZDecoder msg =
-    Keyboard.Event.considerKeyboardEvent <|
-        \{ ctrlKey, metaKey, key } ->
-            if (metaKey || ctrlKey) && key == Just "z" then
-                Just msg
-
-            else
-                Nothing
 
 
 arrowKeyDecoder : (Direction -> msg) -> Decoder msg
@@ -321,14 +305,6 @@ update msg model =
                 }
                     |> transitionFocusTo newFocus
 
-            CtrlZ ->
-                { model
-                    | world =
-                        mapCurrentLayer
-                            (\current -> { current | rects = List.drop 1 current.rects })
-                            model.world
-                }
-
 
 transitionFocusTo : WorldPoint -> Model -> Model
 transitionFocusTo focus model =
@@ -374,7 +350,6 @@ view model =
                 , "Scroll to spin."
                 , "Left/right arrows to switch layers."
                 , "Click a rectangle to go there."
-                , "Ctrl+Z to undo."
                 ]
         , Html.Styled.Lazy.lazy viewSvg model
         ]
