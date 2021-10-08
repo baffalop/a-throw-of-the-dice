@@ -39,7 +39,7 @@ import Svg.Styled as SvgStyled
 import Svg.Styled.Attributes as SvgAttr
 import Svg.Styled.Events
 import Vector2d exposing (Vector2d)
-import Vector3d
+import Vector3d exposing (Vector3d)
 import Viewpoint3d exposing (Viewpoint3d)
 import ZipList exposing (ZipList)
 
@@ -58,7 +58,7 @@ main =
 
 
 type alias Model =
-    { layers : ZipList Layer
+    { layers : Layers
     , centrePoint : SourcePoint
     , focus : WorldPoint
     , transition : Maybe Transition
@@ -68,6 +68,10 @@ type alias Model =
     , screenDimensions : ( Int, Int )
     , devicePixelRatio : Float
     }
+
+
+type alias Layers =
+    ZipList Layer
 
 
 type alias Layer =
@@ -98,12 +102,12 @@ type Msg
     | ClickedTo Int WorldPoint
     | AnimationTick Float
     | WindowResize Int Int
-    | ArrowKeyPressed ArrowKey
+    | ArrowKeyPressed Direction
     | CtrlZ
     | NoOp
 
 
-type ArrowKey
+type Direction
     = Left
     | Right
 
@@ -169,7 +173,7 @@ ctrlZDecoder msg =
                 Nothing
 
 
-arrowKeyDecoder : (ArrowKey -> msg) -> Decoder msg
+arrowKeyDecoder : (Direction -> msg) -> Decoder msg
 arrowKeyDecoder msg =
     Decode.field "key" Decode.string
         |> Decode.andThen
@@ -298,9 +302,6 @@ update msg model =
 
             ArrowKeyPressed key ->
                 let
-                    currentLayer =
-                        ZipList.current model.layers
-
                     planesAreFacingRight =
                         ZipList.current model.layers
                             |> .plane
@@ -308,42 +309,17 @@ update msg model =
 
                     direction =
                         if planesAreFacingRight then
-                            key
-
-                        else
                             reverse key
 
-                    { multiplier, shift, insert } =
-                        case direction of
-                            Left ->
-                                { multiplier = 1
-                                , shift = ZipList.maybeJumpForward 1
-                                , insert = ZipList.insert
-                                }
-
-                            Right ->
-                                { multiplier = -1
-                                , shift = ZipList.maybeJumpBackward 1
-                                , insert = ziplistInsertBefore
-                                }
-
-                    zVector =
-                        Vector3d.xyz zeroMeters zeroMeters (planeSpacing |> Quantity.multiplyBy multiplier)
-
-                    newLayer =
-                        { plane = currentLayer.plane |> SketchPlane3d.translateBy zVector
-                        , rects = []
-                        , hue = currentLayer.hue + (multiplier * layerHueSpacing) |> floor |> modBy 256 |> toFloat
-                        }
+                        else
+                            key
 
                     newFocus =
-                        model.focus |> Point3d.translateBy zVector
+                        model.focus |> Point3d.translateBy (zVectorFromDirection direction)
                 in
                 { model
                     | drawnRect = Nothing
-                    , layers =
-                        shift model.layers
-                            |> Maybe.withDefault (insert newLayer model.layers)
+                    , layers = moveLayer direction model.layers
                 }
                     |> transitionFocusTo newFocus
 
@@ -672,6 +648,52 @@ svgCoord =
 
 
 
+-- LAYERS
+
+
+moveLayer : Direction -> Layers -> Layers
+moveLayer direction layers =
+    let
+        move =
+            case direction of
+                Left ->
+                    ZipList.maybeJumpBackward 1
+
+                Right ->
+                    ZipList.maybeJumpForward 1
+    in
+    case move layers of
+        Just l ->
+            l
+
+        Nothing ->
+            grow direction layers
+
+
+grow : Direction -> Layers -> Layers
+grow direction layers =
+    let
+        currentLayer =
+            ZipList.current layers
+
+        ( insert, multiplier ) =
+            case direction of
+                Left ->
+                    ( ziplistInsertBefore, -1 )
+
+                Right ->
+                    ( ZipList.insert, 1 )
+
+        newLayer =
+            { plane = currentLayer.plane |> SketchPlane3d.translateBy (zVectorFromDirection direction)
+            , rects = []
+            , hue = currentLayer.hue + (multiplier * layerHueSpacing) |> floor |> modBy 256 |> toFloat
+            }
+    in
+    insert newLayer layers
+
+
+
 -- GEOMETRY
 
 
@@ -799,6 +821,20 @@ isFacingRightOf viewpoint =
         >> Maybe.withDefault False
 
 
+zVectorFromDirection : Direction -> Vector3d Length.Meters World
+zVectorFromDirection direction =
+    let
+        multiplier =
+            case direction of
+                Left ->
+                    -1
+
+                Right ->
+                    1
+    in
+    Vector3d.xyz zeroMeters zeroMeters (planeSpacing |> Quantity.multiplyBy multiplier)
+
+
 makeCameraGeometry : { a | focus : WorldPoint, azimuth : Angle, elevation : Angle, screenDimensions : ( Int, Int ) } -> CameraGeometry
 makeCameraGeometry ({ focus, azimuth, elevation, screenDimensions } as model) =
     { camera =
@@ -856,7 +892,7 @@ withNoCmd =
     flip Tuple.pair Cmd.none
 
 
-reverse : ArrowKey -> ArrowKey
+reverse : Direction -> Direction
 reverse key =
     case key of
         Left ->
