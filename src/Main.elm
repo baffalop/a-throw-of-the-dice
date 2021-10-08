@@ -661,32 +661,109 @@ moveLayer direction world =
 grow : Direction -> World -> World
 grow direction world =
     let
-        currentLayer =
-            getCurrentLayer world
-
-        { insert, multiplier, newOrigin } =
+        { insert, absoluteIndex, newOrigin } =
             case direction of
                 Left ->
                     { insert = ziplistInsertBefore
-                    , multiplier = -1
+                    , absoluteIndex = -world.origin - 1
                     , newOrigin = world.origin + 1
                     }
 
                 Right ->
                     { insert = ZipList.insert
-                    , multiplier = 1
+                    , absoluteIndex = ZipList.length world.layers - world.origin + 1
                     , newOrigin = world.origin
                     }
 
         newLayer =
-            { plane = currentLayer.plane |> SketchPlane3d.translateBy (zVectorFromDirection direction)
+            { plane = sourcePlaneFromIndex absoluteIndex
             , rects = []
-            , hue = currentLayer.hue + (multiplier * layerHueSpacing) |> floor |> modBy 256 |> toFloat
+            , hue = hueFromIndex absoluteIndex
             }
     in
     { origin = newOrigin
     , layers = insert newLayer world.layers
     }
+
+
+updateWorld : ApiWorld -> World -> World
+updateWorld api world =
+    let
+        relativeIndex =
+            ZipList.currentIndex world.layers - world.origin
+    in
+    { origin = api.origin
+    , layers =
+        apiToLayers api
+            |> ZipList.fromList
+            |> Maybe.andThen (ZipList.goToIndex <| api.origin + relativeIndex)
+            |> Maybe.withDefault world.layers
+    }
+
+
+sourcePlaneFromIndex : Int -> SourcePlane
+sourcePlaneFromIndex index =
+    let
+        originPlane =
+            SketchPlane3d.xy
+
+        zVector =
+            planeSpacing
+                |> Quantity.multiplyBy (toFloat index)
+                |> Vector3d.xyz zeroMeters zeroMeters
+    in
+    originPlane |> SketchPlane3d.translateBy zVector
+
+
+hueFromIndex : Int -> Float
+hueFromIndex index =
+    theme.initialLayerHue + (index * layerHueSpacing) |> modBy 256 |> toFloat
+
+
+
+-- API
+
+
+type alias ApiWorld =
+    { origin : Int
+    , layers : ApiLayers
+    }
+
+
+type alias ApiLayers =
+    List (List ApiRect)
+
+
+type alias ApiRect =
+    { x : Float
+    , y : Float
+    , w : Float
+    }
+
+
+apiToLayers : ApiWorld -> List Layer
+apiToLayers { origin, layers } =
+    List.indexedMap
+        (\index apiLayer ->
+            let
+                absoluteIndex =
+                    index - origin
+
+                plane =
+                    sourcePlaneFromIndex absoluteIndex
+            in
+            { plane = plane
+            , rects = List.map (apiToRect plane) apiLayer
+            , hue = hueFromIndex absoluteIndex
+            }
+        )
+        layers
+
+
+apiToRect : SourcePlane -> ApiRect -> Rect
+apiToRect plane { x, y, w } =
+    rectFrom (Point2d.millimeters x y) (Point2d.millimeters (x + w) 0)
+        |> Rectangle3d.on plane
 
 
 
