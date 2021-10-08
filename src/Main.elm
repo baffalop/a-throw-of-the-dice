@@ -735,9 +735,10 @@ type alias ApiLayers =
 
 
 type alias ApiRect =
-    { x : Float
-    , y : Float
-    , w : Float
+    { x1 : Float
+    , y1 : Float
+    , x2 : Float
+    , y2 : Float
     }
 
 
@@ -761,8 +762,13 @@ apiToLayers { origin, layers } =
 
 
 apiToRect : SourcePlane -> ApiRect -> Rect
-apiToRect plane { x, y, w } =
-    rectFrom (Point2d.millimeters x y) (Point2d.millimeters (x + w) 0)
+apiToRect plane { x1, y1, x2, y2 } =
+    Rectangle2d.with
+        { x1 = Length.millimeters x1
+        , y1 = Length.millimeters y1
+        , x2 = Length.millimeters x2
+        , y2 = Length.millimeters y2
+        }
         |> Rectangle3d.on plane
 
 
