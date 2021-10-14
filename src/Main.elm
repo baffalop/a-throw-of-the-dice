@@ -20,7 +20,7 @@ import Html.Styled.Attributes exposing (css)
 import Html.Styled.Events as StyledEvents
 import Html.Styled.Lazy
 import Json.Decode as Decode exposing (Decoder)
-import Keyboard.Event
+import Json.Encode as Encode
 import Length
 import LineSegment2d exposing (LineSegment2d)
 import LineSegment3d exposing (LineSegment3d)
@@ -770,6 +770,55 @@ apiToRect plane { x1, y1, x2, y2 } =
         , y2 = Length.millimeters y2
         }
         |> Rectangle3d.on plane
+
+
+worldDecoder : Decoder ApiWorld
+worldDecoder =
+    Decode.map2
+        ApiWorld
+        (Decode.field "origin" Decode.int)
+        (Decode.field "layers" <| Decode.list <| Decode.list rectDecoder)
+
+
+rectDecoder : Decoder ApiRect
+rectDecoder =
+    Decode.map4
+        ApiRect
+        (Decode.field "x1" Decode.float)
+        (Decode.field "y1" Decode.float)
+        (Decode.field "x2" Decode.float)
+        (Decode.field "y2" Decode.float)
+
+
+rectToApi : PlaneRect -> ApiRect
+rectToApi rect =
+    let
+        toTuple =
+            Point2d.toTuple Length.inMillimeters
+
+        ( ( x1, y1 ), ( x2, y2 ) ) =
+            case Rectangle2d.vertices rect of
+                [ v1, _, v2, _ ] ->
+                    ( toTuple v1, toTuple v2 )
+
+                _ ->
+                    ( ( 0, 0 ), ( 0, 0 ) )
+    in
+    { x1 = x1
+    , y1 = y1
+    , x2 = x2
+    , y2 = y2
+    }
+
+
+rectEncoder : ApiRect -> Encode.Value
+rectEncoder { x1, y1, x2, y2 } =
+    Encode.object
+        [ ( "x1", Encode.float x1 )
+        , ( "y1", Encode.float y1 )
+        , ( "x2", Encode.float x2 )
+        , ( "y2", Encode.float y2 )
+        ]
 
 
 
