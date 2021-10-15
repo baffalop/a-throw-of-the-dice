@@ -742,6 +742,15 @@ type alias ApiRect =
     }
 
 
+type UpMsg
+    = ApiInsert { layer : Int, span : ApiRect }
+
+
+type DownMsg
+    = ApiUpdate ApiWorld
+    | ApiError String
+
+
 apiToLayers : ApiWorld -> List Layer
 apiToLayers { origin, layers } =
     List.indexedMap
@@ -811,14 +820,42 @@ rectToApi rect =
     }
 
 
-rectEncoder : ApiRect -> Encode.Value
-rectEncoder { x1, y1, x2, y2 } =
+encodeRect : ApiRect -> Encode.Value
+encodeRect { x1, y1, x2, y2 } =
     Encode.object
         [ ( "x1", Encode.float x1 )
         , ( "y1", Encode.float y1 )
         , ( "x2", Encode.float x2 )
         , ( "y2", Encode.float y2 )
         ]
+
+
+encodeUp : UpMsg -> Encode.Value
+encodeUp msg =
+    case msg of
+        ApiInsert { layer, span } ->
+            Encode.object
+                [ ( "msg", Encode.string "insert" )
+                , ( "layer", Encode.int layer )
+                , ( "span", encodeRect span )
+                ]
+
+
+downDecoder : Decoder DownMsg
+downDecoder =
+    Decode.field "msg" Decode.string
+        |> Decode.andThen
+            (\msg ->
+                case msg of
+                    "update" ->
+                        Decode.map ApiUpdate worldDecoder
+
+                    "error" ->
+                        Decode.map ApiError <| Decode.field "errorMsg" Decode.string
+
+                    _ ->
+                        Decode.fail <| "invalid msg type " ++ msg
+            )
 
 
 
