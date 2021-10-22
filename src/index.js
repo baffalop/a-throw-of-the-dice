@@ -7,14 +7,9 @@ const app = Elm.Main.init({
   flags: {
     devicePixelRatio: window.devicePixelRatio,
     screenDimensions: [window.innerWidth, window.innerHeight],
-    webSocketUrl: getWebsocketUrl(),
+    webSocketUrl: `ws://${window.location.host}`,
   },
 })
 
 portFunnelSubscribe(app)
 initWebsocket()
-
-function getWebsocketUrl () {
-  // @todo derive from window.location
-  return 'ws://localhost:1234'
-}
