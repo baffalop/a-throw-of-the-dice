@@ -31,6 +31,8 @@ import Pixels
 import Point2d exposing (Point2d)
 import Point3d exposing (Point3d)
 import Point3d.Projection
+import PortFunnel.WebSocket as WS
+import PortFunnels as Funnels
 import Quantity
 import Rectangle2d exposing (Rectangle2d)
 import Rectangle3d exposing (Rectangle3d)
@@ -58,15 +60,23 @@ main =
 
 
 type alias Model =
-    { world : World
-    , centrePoint : SourcePoint
-    , focus : WorldPoint
-    , transition : Maybe Transition
-    , azimuth : Angle
-    , elevation : Angle
-    , drawnRect : Maybe DrawnRect
-    , screenDimensions : ( Int, Int )
-    , devicePixelRatio : Float
+    Flags
+        { world : World
+        , centrePoint : SourcePoint
+        , focus : WorldPoint
+        , transition : Maybe Transition
+        , azimuth : Angle
+        , elevation : Angle
+        , drawnRect : Maybe DrawnRect
+        , funnelState : Funnels.State
+        }
+
+
+type alias Flags a =
+    { a
+        | devicePixelRatio : Float
+        , screenDimensions : ( Int, Int )
+        , webSocketUrl : String
     }
 
 
@@ -105,6 +115,7 @@ type Msg
     | AnimationTick Float
     | WindowResize Int Int
     | ArrowKeyPressed Direction
+    | FunnelMsg Encode.Value
     | NoOp
 
 
@@ -113,8 +124,8 @@ type Direction
     | Right
 
 
-init : { devicePixelRatio : Float, screenDimensions : ( Int, Int ) } -> ( Model, Cmd msg )
-init { devicePixelRatio, screenDimensions } =
+init : Flags {} -> ( Model, Cmd Msg )
+init { devicePixelRatio, screenDimensions, webSocketUrl } =
     let
         ( screenWidth, screenHeight ) =
             screenDimensions
@@ -144,21 +155,24 @@ init { devicePixelRatio, screenDimensions } =
     , drawnRect = Nothing
     , screenDimensions = screenDimensions
     , devicePixelRatio = devicePixelRatio
+    , webSocketUrl = webSocketUrl
+    , funnelState = Funnels.initialState
     }
-        |> withNoCmd
+        |> withCmd (wsCmd <| WS.makeOpen webSocketUrl)
 
 
 subscriptions : Model -> Sub Msg
-subscriptions { transition } =
+subscriptions model =
     Sub.batch
         [ Browser.Events.onKeyDown <| arrowKeyDecoder ArrowKeyPressed
         , Browser.Events.onResize WindowResize
-        , case transition of
+        , case model.transition of
             Nothing ->
                 Sub.none
 
             Just _ ->
                 Browser.Events.onAnimationFrameDelta AnimationTick
+        , Funnels.subscriptions FunnelMsg model
         ]
 
 
@@ -181,83 +195,92 @@ arrowKeyDecoder msg =
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    withNoCmd <|
-        case msg of
-            NoOp ->
-                model
+    let
+        noOp =
+            ( model, Cmd.none )
+    in
+    case msg of
+        NoOp ->
+            noOp
 
-            MouseDown x y ->
-                let
-                    currentLayer =
-                        ZipList.current model.world.layers
-                in
-                { model
-                    | drawnRect =
-                        ( x, y )
-                            |> raycastTo currentLayer.plane (makeCameraGeometry model) model.devicePixelRatio
-                            |> Maybe.map
-                                (\point ->
-                                    { originPoint = point
-                                    , rect = rectFrom point point
-                                    }
-                                )
-                }
-
-            MouseMove x y ->
-                case model.drawnRect of
-                    Nothing ->
-                        model
-
-                    Just rect ->
-                        let
-                            currentLayer =
-                                getCurrentLayer model.world
-                        in
-                        { model
-                            | drawnRect =
-                                ( x, y )
-                                    |> raycastTo currentLayer.plane (makeCameraGeometry model) model.devicePixelRatio
-                                    |> Maybe.map (\endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
-                        }
-
-            MouseUp ->
-                { model
-                    | drawnRect = Nothing
-                    , world =
-                        mapCurrentLayer
-                            (\({ rects, plane } as current) ->
-                                { current
-                                    | rects =
-                                        model.drawnRect
-                                            |> Maybe.map (.rect >> Rectangle3d.on plane >> flip (::) rects)
-                                            |> Maybe.withDefault rects
+        MouseDown x y ->
+            let
+                currentLayer =
+                    ZipList.current model.world.layers
+            in
+            { model
+                | drawnRect =
+                    ( x, y )
+                        |> raycastTo currentLayer.plane (makeCameraGeometry model) model.devicePixelRatio
+                        |> Maybe.map
+                            (\point ->
+                                { originPoint = point
+                                , rect = rectFrom point point
                                 }
                             )
-                            model.world
-                }
+            }
+                |> withNoCmd
 
-            Wheel deltaX deltaY ->
-                let
-                    add delta =
-                        Angle.inDegrees >> (+) (delta * wheelCoefficient) >> Angle.degrees
-                in
-                { model
-                    | azimuth = model.azimuth |> add deltaX
-                    , elevation = model.elevation |> add deltaY
-                }
+        MouseMove x y ->
+            case model.drawnRect of
+                Nothing ->
+                    noOp
 
-            ClickedTo layerIndex newFocus ->
-                let
-                    withLayerSet =
-                        { model | world = model.world |> goToIndex layerIndex }
-                in
+                Just rect ->
+                    let
+                        currentLayer =
+                            getCurrentLayer model.world
+                    in
+                    { model
+                        | drawnRect =
+                            ( x, y )
+                                |> raycastTo currentLayer.plane (makeCameraGeometry model) model.devicePixelRatio
+                                |> Maybe.map (\endPoint -> { rect | rect = rectFrom rect.originPoint endPoint })
+                    }
+                        |> withNoCmd
+
+        MouseUp ->
+            { model
+                | drawnRect = Nothing
+                , world =
+                    mapCurrentLayer
+                        (\({ rects, plane } as current) ->
+                            { current
+                                | rects =
+                                    model.drawnRect
+                                        |> Maybe.map (.rect >> Rectangle3d.on plane >> flip (::) rects)
+                                        |> Maybe.withDefault rects
+                            }
+                        )
+                        model.world
+            }
+                |> withNoCmd
+
+        Wheel deltaX deltaY ->
+            let
+                add delta =
+                    Angle.inDegrees >> (+) (delta * wheelCoefficient) >> Angle.degrees
+            in
+            { model
+                | azimuth = model.azimuth |> add deltaX
+                , elevation = model.elevation |> add deltaY
+            }
+                |> withNoCmd
+
+        ClickedTo layerIndex newFocus ->
+            let
+                withLayerSet =
+                    { model | world = model.world |> goToIndex layerIndex }
+            in
+            withNoCmd <|
                 if newFocus |> Point3d.equalWithin (Length.centimeters 0.2) model.focus then
                     withLayerSet
 
                 else
                     withLayerSet |> transitionFocusTo newFocus
 
-            AnimationTick delta ->
+        AnimationTick delta ->
+            withNoCmd <|
                 case model.transition of
                     Nothing ->
                         model
@@ -279,31 +302,46 @@ update msg model =
                                 , transition = Just { transition | at = at }
                             }
 
-            WindowResize width height ->
-                { model | screenDimensions = ( width, height ) }
+        WindowResize width height ->
+            { model | screenDimensions = ( width, height ) }
+                |> withNoCmd
 
-            ArrowKeyPressed key ->
-                let
-                    planesAreFacingRight =
-                        getCurrentLayer model.world
-                            |> .plane
-                            |> isFacingRightOf (makeViewpoint model)
+        ArrowKeyPressed key ->
+            let
+                planesAreFacingRight =
+                    getCurrentLayer model.world
+                        |> .plane
+                        |> isFacingRightOf (makeViewpoint model)
 
-                    direction =
-                        if planesAreFacingRight then
-                            reverse key
+                direction =
+                    if planesAreFacingRight then
+                        reverse key
 
-                        else
-                            key
+                    else
+                        key
 
-                    newFocus =
-                        model.focus |> Point3d.translateBy (zVectorFromDirection direction)
-                in
-                { model
-                    | drawnRect = Nothing
-                    , world = moveLayer direction model.world
-                }
-                    |> transitionFocusTo newFocus
+                newFocus =
+                    model.focus |> Point3d.translateBy (zVectorFromDirection direction)
+            in
+            { model
+                | drawnRect = Nothing
+                , world = moveLayer direction model.world
+            }
+                |> transitionFocusTo newFocus
+                |> withNoCmd
+
+        FunnelMsg value ->
+            case Funnels.processValue funnelDict value model.funnelState model of
+                Err err ->
+                    Debug.todo err
+
+                Ok result ->
+                    result
+
+
+handleWebsocket : WS.Response -> Funnels.State -> Model -> ( Model, Cmd Msg )
+handleWebsocket response funnelState model =
+    Debug.todo "handle"
 
 
 transitionFocusTo : WorldPoint -> Model -> Model
@@ -1052,9 +1090,14 @@ ziplistInsertBefore x ziplist =
         |> ZipList.backward
 
 
-withNoCmd : a -> ( a, Cmd msg )
+withNoCmd : Model -> ( Model, Cmd msg )
 withNoCmd =
-    flip Tuple.pair Cmd.none
+    withCmd Cmd.none
+
+
+withCmd : Cmd msg -> Model -> ( Model, Cmd msg )
+withCmd =
+    flip Tuple.pair
 
 
 reverse : Direction -> Direction
@@ -1169,3 +1212,27 @@ resolution ratio =
 
 subtractScreenMargins ( x, y ) =
     ( x - screenMargins, y - screenMargins )
+
+
+
+-- PortFunnel boilerplate
+
+
+wsCmd : WS.Message -> Cmd Msg
+wsCmd =
+    WS.send <| getFunnelCmdPort WS.moduleName
+
+
+getFunnelCmdPort moduleName =
+    Funnels.getCmdPort FunnelMsg moduleName False
+
+
+funnelHandlers : List (Funnels.Handler Model Msg)
+funnelHandlers =
+    [ Funnels.WebSocketHandler handleWebsocket
+    ]
+
+
+funnelDict : Funnels.FunnelDict Model Msg
+funnelDict =
+    Funnels.makeFunnelDict funnelHandlers <| flip (always getFunnelCmdPort)
