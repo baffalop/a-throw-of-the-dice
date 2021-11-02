@@ -158,7 +158,7 @@ init { devicePixelRatio, screenDimensions, webSocketUrl } =
     , webSocketUrl = webSocketUrl
     , funnelState = Funnels.initialState
     }
-        |> withCmd (wsCmd <| WS.makeOpen webSocketUrl)
+        |> withCmd (wsCmd <| WS.makeOpenWithKey wsKey webSocketUrl)
 
 
 subscriptions : Model -> Sub Msg
@@ -240,21 +240,21 @@ update msg model =
                         |> withNoCmd
 
         MouseUp ->
-            { model
-                | drawnRect = Nothing
-                , world =
-                    mapCurrentLayer
-                        (\({ rects, plane } as current) ->
-                            { current
-                                | rects =
-                                    model.drawnRect
-                                        |> Maybe.map (.rect >> Rectangle3d.on plane >> flip (::) rects)
-                                        |> Maybe.withDefault rects
-                            }
-                        )
-                        model.world
-            }
-                |> withNoCmd
+            case model.drawnRect of
+                Nothing ->
+                    noOp
+
+                Just { rect } ->
+                    { model
+                        | drawnRect = Nothing
+                        , world =
+                            mapCurrentLayer
+                                (\({ rects, plane } as current) ->
+                                    { current | rects = (rect |> Rectangle3d.on plane) :: rects }
+                                )
+                                model.world
+                    }
+                        |> withCmd (sendApiMsg <| ApiInsert { span = rectToApi rect, layer = relativeIndex model.world })
 
         Wheel deltaX deltaY ->
             let
@@ -333,15 +333,63 @@ update msg model =
         FunnelMsg value ->
             case Funnels.processValue funnelDict value model.funnelState model of
                 Err err ->
-                    Debug.todo err
+                    let
+                        _ =
+                            Debug.log "Funnel error" err
+                    in
+                    noOp
 
                 Ok result ->
                     result
 
 
-handleWebsocket : WS.Response -> Funnels.State -> Model -> ( Model, Cmd Msg )
-handleWebsocket response funnelState model =
-    Debug.todo "handle"
+updateFromWebsocket : WS.Response -> Funnels.State -> Model -> ( Model, Cmd Msg )
+updateFromWebsocket response funnelState model_ =
+    let
+        model =
+            { model_ | funnelState = funnelState }
+
+        noOp =
+            ( model, Cmd.none )
+
+        justLog msg x =
+            let
+                _ =
+                    Debug.log msg x
+            in
+            noOp
+    in
+    case response of
+        WS.MessageReceivedResponse { message } ->
+            let
+                _ =
+                    Debug.log "WS message received" message
+            in
+            case Decode.decodeString downDecoder message of
+                Err err ->
+                    justLog "Decode error" err
+
+                Ok (ApiError err) ->
+                    justLog "API error" err
+
+                Ok (ApiUpdate newWorld) ->
+                    { model | world = updateWorld newWorld model.world }
+                        |> withNoCmd
+
+        WS.CmdResponse msg ->
+            model |> withCmd (wsCmd msg)
+
+        WS.ListResponse _ ->
+            justLog "WS list" ()
+
+        WS.ErrorResponse err ->
+            justLog "WS error" err
+
+        WS.ConnectedResponse _ ->
+            justLog "WS connected" ()
+
+        _ ->
+            noOp
 
 
 transitionFocusTo : WorldPoint -> Model -> Model
@@ -726,17 +774,18 @@ grow direction world =
 
 updateWorld : ApiWorld -> World -> World
 updateWorld api world =
-    let
-        relativeIndex =
-            ZipList.currentIndex world.layers - world.origin
-    in
     { origin = api.origin
     , layers =
         apiToLayers api
             |> ZipList.fromList
-            |> Maybe.andThen (ZipList.goToIndex <| api.origin + relativeIndex)
+            |> Maybe.andThen (ZipList.goToIndex <| api.origin + relativeIndex world)
             |> Maybe.withDefault world.layers
     }
+
+
+relativeIndex : World -> Int
+relativeIndex { layers, origin } =
+    ZipList.currentIndex layers - origin
 
 
 sourcePlaneFromIndex : Int -> SourcePlane
@@ -885,8 +934,11 @@ downDecoder =
         |> Decode.andThen
             (\msg ->
                 case msg of
+                    "establish" ->
+                        Decode.map ApiUpdate <| Decode.field "world" worldDecoder
+
                     "update" ->
-                        Decode.map ApiUpdate worldDecoder
+                        Decode.map ApiUpdate <| Decode.field "world" worldDecoder
 
                     "error" ->
                         Decode.map ApiError <| Decode.field "errorMsg" Decode.string
@@ -894,6 +946,11 @@ downDecoder =
                     _ ->
                         Decode.fail <| "invalid msg type " ++ msg
             )
+
+
+sendApiMsg : UpMsg -> Cmd Msg
+sendApiMsg =
+    encodeUp >> Encode.encode 0 >> WS.makeSend wsKey >> wsCmd
 
 
 
@@ -1223,13 +1280,18 @@ wsCmd =
     WS.send <| getFunnelCmdPort WS.moduleName
 
 
+wsKey : String
+wsKey =
+    "api"
+
+
 getFunnelCmdPort moduleName =
     Funnels.getCmdPort FunnelMsg moduleName False
 
 
 funnelHandlers : List (Funnels.Handler Model Msg)
 funnelHandlers =
-    [ Funnels.WebSocketHandler handleWebsocket
+    [ Funnels.WebSocketHandler updateFromWebsocket
     ]
 
 
