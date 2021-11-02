@@ -747,24 +747,27 @@ moveLayer direction world =
 grow : Direction -> World -> World
 grow direction world =
     let
-        { insert, absoluteIndex, newOrigin } =
+        { insert, offset, newOrigin } =
             case direction of
                 Left ->
                     { insert = ziplistInsertBefore
-                    , absoluteIndex = -world.origin - 1
+                    , offset = -1
                     , newOrigin = world.origin + 1
                     }
 
                 Right ->
                     { insert = ZipList.insert
-                    , absoluteIndex = ZipList.length world.layers - world.origin + 1
+                    , offset = 1
                     , newOrigin = world.origin
                     }
 
+        newRelativeIndex =
+            relativeIndex world + offset
+
         newLayer =
-            { plane = sourcePlaneFromIndex absoluteIndex
+            { plane = sourcePlaneFromIndex newRelativeIndex
             , rects = []
-            , hue = hueFromIndex absoluteIndex
+            , hue = hueFromIndex newRelativeIndex
             }
     in
     { origin = newOrigin
