@@ -11,5 +11,7 @@ const app = Elm.Main.init({
   },
 })
 
+app.ports.log.subscribe(console.log)
+
 portFunnelSubscribe(app)
 initWebsocket()

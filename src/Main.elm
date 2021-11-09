@@ -1,4 +1,4 @@
-module Main exposing (..)
+port module Main exposing (..)
 
 import Angle exposing (Angle)
 import Axis3d exposing (Axis3d)
@@ -159,6 +159,9 @@ init { devicePixelRatio, screenDimensions, webSocketUrl } =
     , funnelState = Funnels.initialState
     }
         |> withCmd (wsCmd <| WS.makeOpenWithKey wsKey webSocketUrl)
+
+
+port log : String -> Cmd msg
 
 
 subscriptions : Model -> Sub Msg
@@ -332,11 +335,7 @@ update msg model =
 
         FunnelMsg value ->
             case Funnels.processValue funnelDict value model.funnelState model of
-                Err err ->
-                    let
-                        _ =
-                            Debug.log "Funnel error" err
-                    in
+                Err _ ->
                     noOp
 
                 Ok result ->
@@ -352,25 +351,17 @@ updateFromWebsocket response funnelState model_ =
         noOp =
             ( model, Cmd.none )
 
-        justLog msg x =
-            let
-                _ =
-                    Debug.log msg x
-            in
-            noOp
+        justLog message =
+            ( model, log message )
     in
     case response of
         WS.MessageReceivedResponse { message } ->
-            let
-                _ =
-                    Debug.log "WS message received" message
-            in
             case Decode.decodeString downDecoder message of
-                Err err ->
-                    justLog "Decode error" err
+                Err _ ->
+                    justLog "Decode error"
 
                 Ok (ApiError err) ->
-                    justLog "API error" err
+                    justLog <| "API error: " ++ err
 
                 Ok (ApiUpdate newWorld) ->
                     { model | world = updateWorld newWorld model.world }
@@ -380,13 +371,13 @@ updateFromWebsocket response funnelState model_ =
             model |> withCmd (wsCmd msg)
 
         WS.ListResponse _ ->
-            justLog "WS list" ()
+            noOp
 
-        WS.ErrorResponse err ->
-            justLog "WS error" err
+        WS.ErrorResponse _ ->
+            justLog "WS error"
 
         WS.ConnectedResponse _ ->
-            justLog "WS connected" ()
+            justLog "WS connected"
 
         _ ->
             noOp
