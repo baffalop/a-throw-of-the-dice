@@ -463,8 +463,8 @@ viewSvg model =
         |> (::) (viewFocusRect camera currentLayer.hue focusRect)
         |> SvgStyled.svg
             (mouseEvents
-                ++ [ SvgAttr.width <| flip (++) "px" <| String.fromInt screenWidth
-                   , SvgAttr.height <| flip (++) "px" <| String.fromInt screenHeight
+                ++ [ SvgAttr.width <| String.fromInt screenWidth ++ "px"
+                   , SvgAttr.height <| String.fromInt screenHeight ++ "px"
                    , StyledEvents.preventDefaultOn "wheel" <| coordinateDecoder "delta" (\x y -> ( Wheel x y, True ))
                    ]
             )
