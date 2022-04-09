@@ -4,6 +4,7 @@
     "build": "parcel build ./src/index.html --public-url ./"
   },
   "devDependencies": {
+    "elm": "^0.19.1",
     "elm-hot": "^1.1.5",
     "node-elm-compiler": "^5.0.5"
   }
