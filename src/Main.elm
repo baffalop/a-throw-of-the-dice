@@ -387,8 +387,7 @@ view model =
         [ Styled.div
             [ css
                 [ Css.position Css.absolute
-                , Css.minWidth Css.minContent
-                , Css.maxWidth <| Css.px 460
+                , Css.maxWidth Css.minContent
                 , Css.top <| Css.px 40
                 , Css.right <| Css.px 40
                 , Css.padding <| Css.px 8
