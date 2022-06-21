@@ -387,6 +387,7 @@ view model =
         [ Styled.div
             [ css
                 [ Css.position Css.absolute
+                , Css.minWidth Css.minContent
                 , Css.maxWidth <| Css.px 460
                 , Css.top <| Css.px 40
                 , Css.right <| Css.px 40
@@ -396,14 +397,14 @@ view model =
                 , Css.fontFamilies [ "Fira Code", "monospace" ]
                 ]
             ]
-            [ nonBreakingTexts
+          <|
+            nowrapTexts
                 [ "Draw rectangles."
                 , "Scroll to spin."
                 , "Left/right arrows to switch layers."
                 , "Click a rectangle to go there."
                 , "Ctrl+Z to undo."
                 ]
-            ]
         , Html.Styled.Lazy.lazy viewSvg model
         ]
 
@@ -570,15 +571,14 @@ viewFocusRect cameraGeometry hue rect =
         []
 
 
-nonBreakingTexts : List String -> Styled.Html msg
-nonBreakingTexts =
-    let
-        nbsp =
-            Char.fromCode 0xA0 |> String.fromChar
-    in
-    List.map (String.replace " " nbsp)
-        >> String.join " "
-        >> Styled.text
+nowrapTexts : List String -> List (Styled.Html msg)
+nowrapTexts =
+    List.map
+        (Styled.text
+            >> List.singleton
+            >> Styled.span [ css [ Css.whiteSpace Css.noWrap ] ]
+        )
+        >> List.intersperse (Styled.text " ")
 
 
 
