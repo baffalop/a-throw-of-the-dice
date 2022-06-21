@@ -363,8 +363,12 @@ updateFromWebsocket response funnelState model_ =
                 Ok (ApiError err) ->
                     justLog <| "API error: " ++ err
 
-                Ok (ApiUpdate newWorld) ->
+                Ok (ApiEstablish newWorld) ->
                     { model | world = updateWorld newWorld model.world }
+                        |> withNoCmd
+
+                Ok (ApiUpdate { world }) ->
+                    { model | world = updateWorld world model.world }
                         |> withNoCmd
 
         WS.CmdResponse msg ->
@@ -767,12 +771,12 @@ grow direction world =
 
 
 updateWorld : ApiWorld -> World -> World
-updateWorld api world =
-    { origin = api.origin
+updateWorld apiWorld world =
+    { origin = apiWorld.origin
     , layers =
-        apiToLayers api
+        apiToLayers apiWorld
             |> ZipList.fromList
-            |> Maybe.andThen (ZipList.goToIndex <| api.origin + relativeIndex world)
+            |> Maybe.andThen (ZipList.goToIndex <| apiWorld.origin + relativeIndex world)
             |> Maybe.withDefault world.layers
     }
 
@@ -828,8 +832,15 @@ type UpMsg
 
 
 type DownMsg
-    = ApiUpdate ApiWorld
+    = ApiEstablish ApiWorld
+    | ApiUpdate ApiUpdateParams
     | ApiError String
+
+
+type alias ApiUpdateParams =
+    { world : ApiWorld
+    , insertedAt : Int
+    }
 
 
 apiToLayers : ApiWorld -> List Layer
@@ -929,10 +940,13 @@ downDecoder =
             (\msg ->
                 case msg of
                     "establish" ->
-                        Decode.map ApiUpdate <| Decode.field "world" worldDecoder
+                        Decode.map ApiEstablish <| Decode.field "world" worldDecoder
 
                     "update" ->
-                        Decode.map ApiUpdate <| Decode.field "world" worldDecoder
+                        Decode.map ApiUpdate <|
+                            Decode.map2 ApiUpdateParams
+                                (Decode.field "world" worldDecoder)
+                                (Decode.field "insertedAt" Decode.int)
 
                     "error" ->
                         Decode.map ApiError <| Decode.field "errorMsg" Decode.string
