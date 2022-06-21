@@ -394,6 +394,8 @@ view model =
                 , Css.backgroundColor theme.accent
                 , Css.color theme.dark
                 , Css.fontFamilies [ "Fira Code", "monospace" ]
+                , Css.lineHeight <| Css.em 1.6
+                , Css.letterSpacing <| Css.em -0.02
                 ]
             ]
           <|
