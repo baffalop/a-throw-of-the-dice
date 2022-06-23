@@ -1,13 +1,11 @@
 {
   "scripts": {
-    "start": "parcel serve ./src/index.html",
-    "build": "parcel build ./src/index.html --public-url ./"
+    "start": "vite",
+    "build": "vite build"
   },
   "devDependencies": {
-    "@parcel/core": "^2.6.1",
-    "@parcel/transformer-elm": "^2.6.1",
     "elm": "^0.19.1-5",
-    "elm-hot": "^1.1.5",
-    "node-elm-compiler": "^5.0.5"
+    "vite": "^2.9.12",
+    "vite-plugin-elm": "^2.6.1"
   }
 }
