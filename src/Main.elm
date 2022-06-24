@@ -41,6 +41,7 @@ import SketchPlane3d exposing (SketchPlane3d)
 import Svg.Styled as SvgStyled
 import Svg.Styled.Attributes as SvgAttr
 import Svg.Styled.Events
+import Svg.Styled.Keyed
 import Vector2d exposing (Vector2d)
 import Vector3d exposing (Vector3d)
 import Viewpoint3d exposing (Viewpoint3d)
@@ -95,7 +96,8 @@ type alias Layer =
 
 
 type alias Span =
-    { source : Source
+    { key : String
+    , source : Source
     , rect : Rect
     }
 
@@ -272,7 +274,7 @@ update msg model =
                         , world =
                             mapCurrentLayer
                                 (\({ spans, plane } as current) ->
-                                    { current | spans = (rect |> Rectangle3d.on plane |> original) :: spans }
+                                    { current | spans = (rect |> Rectangle3d.on plane |> keyedSpan Original) :: spans }
                                 )
                                 model.world
                     }
@@ -500,8 +502,9 @@ viewSvg model =
     model.world.layers
         |> ZipList.toList
         |> List.indexedMap
-            (\index ->
-                viewLayer camera
+            (\index layer ->
+                ( String.fromInt <| toAbsoluteIndex { layerIndex = index, origin = model.world.origin }
+                , viewLayer camera
                     (if index == currentIndex then
                         model.drawnRect
 
@@ -509,10 +512,12 @@ viewSvg model =
                         Nothing
                     )
                     index
+                    layer
+                )
             )
         |> orderByDepth
-        |> (::) (viewFocusRect camera currentLayer.hue focusRect)
-        |> SvgStyled.svg
+        |> (::) ( "drawn", viewFocusRect camera currentLayer.hue focusRect )
+        |> Svg.Styled.Keyed.node "svg"
             (mouseEvents
                 ++ [ SvgAttr.width <| String.fromInt screenWidth ++ "px"
                    , SvgAttr.height <| String.fromInt screenHeight ++ "px"
@@ -526,14 +531,14 @@ viewLayer camera drawnRect index { plane, spans, hue } =
     let
         maybeAppendDrawnRect =
             drawnRect
-                |> Maybe.andThen (.rect >> Rectangle3d.on plane >> original >> viewSpan camera Inert)
+                |> Maybe.andThen (.rect >> Rectangle3d.on plane >> Span "drawn" Original >> viewSpan camera Inert)
                 |> Maybe.map (::)
                 |> Maybe.withDefault identity
     in
     spans
         |> List.filterMap (viewSpan camera (Focusable index <| theme.lighter hue))
         |> maybeAppendDrawnRect
-        |> SvgStyled.g
+        |> Svg.Styled.Keyed.node "g"
             [ SvgAttr.css
                 [ Css.fill <| theme.light hue
                 , Css.margin <| Css.px 0
@@ -541,8 +546,8 @@ viewLayer camera drawnRect index { plane, spans, hue } =
             ]
 
 
-viewSpan : CameraGeometry -> SvgBehaviour -> Span -> Maybe (SvgStyled.Svg Msg)
-viewSpan cameraGeometry behaviour { rect, source } =
+viewSpan : CameraGeometry -> SvgBehaviour -> Span -> Maybe ( String, SvgStyled.Svg Msg )
+viewSpan cameraGeometry behaviour { rect, source, key } =
     let
         viewPlane =
             cameraGeometry.camera
@@ -576,6 +581,13 @@ viewSpan cameraGeometry behaviour { rect, source } =
                     Inert ->
                         []
 
+            displayStyle =
+                if Rectangle3d.vertices rect |> List.all (inFrontOf viewPlane) then
+                    Css.display Css.unset
+
+                else
+                    Css.display Css.none
+
             styles =
                 case source of
                     Original ->
@@ -592,13 +604,15 @@ viewSpan cameraGeometry behaviour { rect, source } =
                         , Css.property "animation-timing-function" "ease-out"
                         ]
         in
-        Just <|
-            SvgStyled.path
+        Just
+            ( key
+            , SvgStyled.path
                 (SvgAttr.d (SvgPath.toString path)
-                    :: SvgAttr.css styles
+                    :: SvgAttr.css (displayStyle :: styles)
                     :: attributes
                 )
                 []
+            )
 
     else
         Nothing
@@ -648,6 +662,22 @@ nowrapTexts =
             >> Styled.span [ css [ Css.whiteSpace Css.noWrap ] ]
         )
         >> List.intersperse (Styled.text " ")
+
+
+keyedSpan : Source -> Rect -> Span
+keyedSpan source rect =
+    { rect = rect
+    , source = source
+    , key =
+        Rectangle3d.vertices rect
+            |> List.head
+            |> Maybe.map
+                (Point3d.coordinates
+                    >> mapEachOfTriple (Length.inMillimeters >> String.fromFloat >> String.left 4)
+                    >> (\( x, y, z ) -> [ x, y, z ] |> String.join ",")
+                )
+            |> Maybe.withDefault ""
+    }
 
 
 
@@ -825,7 +855,7 @@ buildWorld apiWorld oldWorld buildSpans =
 
 relativeIndex : World -> Int
 relativeIndex { layers, origin } =
-    ZipList.currentIndex layers - origin
+    toRelativeIndex { layerIndex = ZipList.currentIndex layers, origin = origin }
 
 
 sourcePlaneFromIndex : Int -> SourcePlane
@@ -844,7 +874,7 @@ sourcePlaneFromIndex index =
 
 getSpansByAbsoluteLayerIndex : Int -> World -> List Span
 getSpansByAbsoluteLayerIndex layerIndex { origin, layers } =
-    ZipList.goToIndex (layerIndex + origin) layers
+    ZipList.goToIndex (toRelativeIndex { layerIndex = layerIndex, origin = origin }) layers
         |> Maybe.map (ZipList.current >> .spans)
         |> Maybe.withDefault []
 
@@ -852,6 +882,16 @@ getSpansByAbsoluteLayerIndex layerIndex { origin, layers } =
 hueFromIndex : Int -> Float
 hueFromIndex index =
     theme.initialLayerHue + (index * layerHueSpacing) |> modBy 256 |> toFloat
+
+
+toAbsoluteIndex : { layerIndex : Int, origin : Int } -> Int
+toAbsoluteIndex { layerIndex, origin } =
+    layerIndex - origin
+
+
+toRelativeIndex : { layerIndex : Int, origin : Int } -> Int
+toRelativeIndex { layerIndex, origin } =
+    layerIndex + origin
 
 
 
@@ -902,7 +942,7 @@ apiWorldToLayers { origin, layers } buildSpans =
         (\layerIndex apiLayer ->
             let
                 absoluteIndex =
-                    layerIndex - origin
+                    toAbsoluteIndex { layerIndex = layerIndex, origin = origin }
 
                 plane =
                     sourcePlaneFromIndex absoluteIndex
@@ -916,12 +956,12 @@ apiWorldToLayers { origin, layers } buildSpans =
 
 
 apiLayerToSpansWithSource : Source -> BuildSpans
-apiLayerToSpansWithSource age absoluteIndex =
+apiLayerToSpansWithSource source absoluteIndex =
     let
         plane =
             sourcePlaneFromIndex absoluteIndex
     in
-    List.map (apiToRect plane >> Span age)
+    List.map (apiToRect plane >> keyedSpan source)
 
 
 diffApiLayersWith : World -> BuildSpans
@@ -942,7 +982,7 @@ diffApiLayersWith oldWorld absoluteIndex inputApiLayer =
                         nextSpan :: diff restApiLayer restSpans
 
                     else
-                        Span FromApiUpdate nextRectFromApi :: diff restApiLayer spans
+                        keyedSpan FromApiUpdate nextRectFromApi :: diff restApiLayer spans
 
                 _ ->
                     apiLayerToSpansWithSource FromApiUpdate absoluteIndex apiLayer
@@ -1226,11 +1266,6 @@ makeViewpoint { focus, azimuth, elevation } =
 -- HELPERS
 
 
-original : Rect -> Span
-original =
-    Span Original
-
-
 coordinateDecoder : String -> (Float -> Float -> msg) -> Decoder msg
 coordinateDecoder prefix mapper =
     Decode.map2
@@ -1255,6 +1290,11 @@ ziplistInsertBefore : a -> ZipList a -> ZipList a
 ziplistInsertBefore x ziplist =
     ZipList.insertBefore x ziplist
         |> ZipList.backward
+
+
+mapEachOfTriple : (a -> b) -> ( a, a, a ) -> ( b, b, b )
+mapEachOfTriple f ( x, y, z ) =
+    ( f x, f y, f z )
 
 
 withNoCmd : Model -> ( Model, Cmd msg )
