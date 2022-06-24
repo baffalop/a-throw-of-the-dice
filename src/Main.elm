@@ -8,6 +8,7 @@ import Browser.Events
 import Camera3d exposing (Camera3d)
 import Color
 import Css
+import Css.Animations
 import Direction2d
 import Direction3d
 import Duration exposing (Duration)
@@ -88,9 +89,26 @@ type alias World =
 
 type alias Layer =
     { plane : SourcePlane
-    , rects : List Rect
+    , spans : List Span
     , hue : Float
     }
+
+
+type alias Span =
+    { source : Source
+    , rect : Rect
+    }
+
+
+{-| For highlighting new rects drawn remotely:
+
+  - Original: originated in this client or the Establish msg
+  - FromApiUpdate: new as part of Update msg - highlight me
+
+-}
+type Source
+    = Original
+    | FromApiUpdate
 
 
 type alias DrawnRect =
@@ -130,25 +148,14 @@ init { devicePixelRatio, screenDimensions, webSocketUrl } =
         ( screenWidth, screenHeight ) =
             screenDimensions
 
-        sourcePlane =
-            SketchPlane3d.xy
-
         centrePoint =
             Point2d.centimeters
                 (toFloat screenWidth * (13.2 / 1000))
                 (toFloat screenHeight * (10 / 800))
     in
-    { world =
-        { origin = 0
-        , layers =
-            ZipList.singleton
-                { plane = sourcePlane
-                , rects = []
-                , hue = theme.initialLayerHue
-                }
-        }
+    { world = emptyWorld
     , centrePoint = centrePoint
-    , focus = centrePoint |> Point3d.on sourcePlane
+    , focus = centrePoint |> Point3d.on originalSourcePlane
     , transition = Nothing
     , azimuth = Angle.degrees 90
     , elevation = Angle.degrees 0
@@ -159,6 +166,18 @@ init { devicePixelRatio, screenDimensions, webSocketUrl } =
     , funnelState = Funnels.initialState
     }
         |> withCmd (wsCmd <| WS.makeOpenWithKey wsKey webSocketUrl)
+
+
+emptyWorld : World
+emptyWorld =
+    { origin = 0
+    , layers =
+        ZipList.singleton
+            { plane = originalSourcePlane
+            , spans = []
+            , hue = theme.initialLayerHue
+            }
+    }
 
 
 port log : String -> Cmd msg
@@ -252,8 +271,8 @@ update msg model =
                         | drawnRect = Nothing
                         , world =
                             mapCurrentLayer
-                                (\({ rects, plane } as current) ->
-                                    { current | rects = (rect |> Rectangle3d.on plane) :: rects }
+                                (\({ spans, plane } as current) ->
+                                    { current | spans = (rect |> Rectangle3d.on plane |> original) :: spans }
                                 )
                                 model.world
                     }
@@ -364,11 +383,15 @@ updateFromWebsocket response funnelState model_ =
                     justLog <| "API error: " ++ err
 
                 Ok (ApiEstablish newWorld) ->
-                    { model | world = updateWorld newWorld model.world }
+                    { model
+                        | world = buildWorld newWorld model.world <| apiLayerToSpansWithSource Original
+                    }
                         |> withNoCmd
 
                 Ok (ApiUpdate { world }) ->
-                    { model | world = updateWorld world model.world }
+                    { model
+                        | world = buildWorld world model.world <| diffApiLayersWith model.world
+                    }
                         |> withNoCmd
 
         WS.CmdResponse msg ->
@@ -499,16 +522,16 @@ viewSvg model =
 
 
 viewLayer : CameraGeometry -> Maybe DrawnRect -> Int -> Layer -> SvgStyled.Svg Msg
-viewLayer camera drawnRect index { plane, rects, hue } =
+viewLayer camera drawnRect index { plane, spans, hue } =
     let
         maybeAppendDrawnRect =
             drawnRect
-                |> Maybe.andThen (.rect >> Rectangle3d.on plane >> viewRect camera Inert)
+                |> Maybe.andThen (.rect >> Rectangle3d.on plane >> original >> viewSpan camera Inert)
                 |> Maybe.map (::)
                 |> Maybe.withDefault identity
     in
-    rects
-        |> List.filterMap (viewRect camera (Focusable index <| theme.lighter hue))
+    spans
+        |> List.filterMap (viewSpan camera (Focusable index <| theme.lighter hue))
         |> maybeAppendDrawnRect
         |> SvgStyled.g
             [ SvgAttr.css
@@ -518,8 +541,8 @@ viewLayer camera drawnRect index { plane, rects, hue } =
             ]
 
 
-viewRect : CameraGeometry -> SvgBehaviour -> Rect -> Maybe (SvgStyled.Svg Msg)
-viewRect cameraGeometry behaviour rect =
+viewSpan : CameraGeometry -> SvgBehaviour -> Span -> Maybe (SvgStyled.Svg Msg)
+viewSpan cameraGeometry behaviour { rect, source } =
     let
         viewPlane =
             cameraGeometry.camera
@@ -552,10 +575,29 @@ viewRect cameraGeometry behaviour rect =
 
                     Inert ->
                         []
+
+            styles =
+                case source of
+                    Original ->
+                        []
+
+                    FromApiUpdate ->
+                        [ Css.animationName <|
+                            Css.Animations.keyframes
+                                [ ( 0, [ Css.Animations.property "filter" "brightness(300%)" ] )
+                                , ( 10, [ Css.Animations.property "filter" "brightness(300%)" ] )
+                                , ( 100, [ Css.Animations.property "filter" "brightness(100%)" ] )
+                                ]
+                        , Css.animationDuration <| Css.ms 500
+                        , Css.property "animation-timing-function" "ease-out"
+                        ]
         in
         Just <|
             SvgStyled.path
-                (SvgAttr.d (SvgPath.toString path) :: attributes)
+                (SvgAttr.d (SvgPath.toString path)
+                    :: SvgAttr.css styles
+                    :: attributes
+                )
                 []
 
     else
@@ -761,7 +803,7 @@ grow direction world =
 
         newLayer =
             { plane = sourcePlaneFromIndex newRelativeIndex
-            , rects = []
+            , spans = []
             , hue = hueFromIndex newRelativeIndex
             }
     in
@@ -770,14 +812,14 @@ grow direction world =
     }
 
 
-updateWorld : ApiWorld -> World -> World
-updateWorld apiWorld world =
+buildWorld : ApiWorld -> World -> BuildSpans -> World
+buildWorld apiWorld oldWorld buildSpans =
     { origin = apiWorld.origin
     , layers =
-        apiToLayers apiWorld
+        apiWorldToLayers apiWorld buildSpans
             |> ZipList.fromList
-            |> Maybe.andThen (ZipList.goToIndex <| apiWorld.origin + relativeIndex world)
-            |> Maybe.withDefault world.layers
+            |> Maybe.andThen (ZipList.goToIndex <| apiWorld.origin + relativeIndex oldWorld)
+            |> Maybe.withDefault oldWorld.layers
     }
 
 
@@ -800,6 +842,13 @@ sourcePlaneFromIndex index =
     originPlane |> SketchPlane3d.translateBy zVector
 
 
+getSpansByAbsoluteLayerIndex : Int -> World -> List Span
+getSpansByAbsoluteLayerIndex layerIndex { origin, layers } =
+    ZipList.goToIndex (layerIndex + origin) layers
+        |> Maybe.map (ZipList.current >> .spans)
+        |> Maybe.withDefault []
+
+
 hueFromIndex : Int -> Float
 hueFromIndex index =
     theme.initialLayerHue + (index * layerHueSpacing) |> modBy 256 |> toFloat
@@ -811,12 +860,12 @@ hueFromIndex index =
 
 type alias ApiWorld =
     { origin : Int
-    , layers : ApiLayers
+    , layers : List ApiLayer
     }
 
 
-type alias ApiLayers =
-    List (List ApiRect)
+type alias ApiLayer =
+    List ApiRect
 
 
 type alias ApiRect =
@@ -843,23 +892,62 @@ type alias ApiUpdateParams =
     }
 
 
-apiToLayers : ApiWorld -> List Layer
-apiToLayers { origin, layers } =
+type alias BuildSpans =
+    Int -> ApiLayer -> List Span
+
+
+apiWorldToLayers : ApiWorld -> BuildSpans -> List Layer
+apiWorldToLayers { origin, layers } buildSpans =
     List.indexedMap
-        (\index apiLayer ->
+        (\layerIndex apiLayer ->
             let
                 absoluteIndex =
-                    index - origin
+                    layerIndex - origin
 
                 plane =
                     sourcePlaneFromIndex absoluteIndex
             in
             { plane = plane
-            , rects = List.map (apiToRect plane) apiLayer
+            , spans = buildSpans absoluteIndex apiLayer
             , hue = hueFromIndex absoluteIndex
             }
         )
         layers
+
+
+apiLayerToSpansWithSource : Source -> BuildSpans
+apiLayerToSpansWithSource age absoluteIndex =
+    let
+        plane =
+            sourcePlaneFromIndex absoluteIndex
+    in
+    List.map (apiToRect plane >> Span age)
+
+
+diffApiLayersWith : World -> BuildSpans
+diffApiLayersWith oldWorld absoluteIndex inputApiLayer =
+    let
+        plane =
+            sourcePlaneFromIndex <| Debug.log "absolute layer index" absoluteIndex
+
+        diff : ApiLayer -> List Span -> List Span
+        diff apiLayer spans =
+            case ( apiLayer, spans ) of
+                ( nextApiRect :: restApiLayer, nextSpan :: restSpans ) ->
+                    let
+                        nextRectFromApi =
+                            apiToRect plane nextApiRect
+                    in
+                    if rectsAreEqual nextRectFromApi nextSpan.rect then
+                        nextSpan :: diff restApiLayer restSpans
+
+                    else
+                        Span FromApiUpdate nextRectFromApi :: diff restApiLayer spans
+
+                _ ->
+                    apiLayerToSpansWithSource FromApiUpdate absoluteIndex apiLayer
+    in
+    diff inputApiLayer <| getSpansByAbsoluteLayerIndex absoluteIndex oldWorld
 
 
 apiToRect : SourcePlane -> ApiRect -> Rect
@@ -1068,6 +1156,15 @@ projectPoint { camera, screenRect } =
     Point3d.Projection.toScreenSpace camera screenRect
 
 
+rectsAreEqual : Rect -> Rect -> Bool
+rectsAreEqual r1 r2 =
+    List.map2
+        (Point3d.equalWithin <| Length.millimeters 0.0001)
+        (Rectangle3d.vertices r1)
+        (Rectangle3d.vertices r2)
+        |> List.all identity
+
+
 inFrontOf : ViewPlane -> WorldPoint -> Bool
 inFrontOf =
     SketchPlane3d.normalAxis
@@ -1127,6 +1224,11 @@ makeViewpoint { focus, azimuth, elevation } =
 
 
 -- HELPERS
+
+
+original : Rect -> Span
+original =
+    Span Original
 
 
 coordinateDecoder : String -> (Float -> Float -> msg) -> Decoder msg
@@ -1234,6 +1336,11 @@ transitionDuration =
 viewDistance : Length.Length
 viewDistance =
     Length.centimeters 25
+
+
+originalSourcePlane : SourcePlane
+originalSourcePlane =
+    SketchPlane3d.xy
 
 
 planeSpacing : Length.Length
