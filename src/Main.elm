@@ -8,7 +8,7 @@ import Browser.Events
 import Camera3d exposing (Camera3d)
 import Color
 import Css
-import Css.Animations
+import Css.Transitions
 import Direction2d
 import Direction3d
 import Duration exposing (Duration)
@@ -71,6 +71,9 @@ type alias Model =
         , elevation : Angle
         , drawnRect : Maybe DrawnRect
         , funnelState : Funnels.State
+
+        -- true when we're waiting for the next animation frame to transition New rects to Assimilated (see Age)
+        , requireSpanAssimilation : Bool
         }
 
 
@@ -97,7 +100,7 @@ type alias Layer =
 
 type alias Span =
     { key : String
-    , source : Source
+    , age : Age
     , rect : Rect
     }
 
@@ -105,12 +108,14 @@ type alias Span =
 {-| For highlighting new rects drawn remotely:
 
   - Original: originated in this client or the Establish msg
-  - FromApiUpdate: new as part of Update msg - highlight me
+  - New: new as part of Update msg - highlight me
+  - Assimilated: was new - unhighlight, preserve highlighting transition
 
 -}
-type Source
+type Age
     = Original
-    | FromApiUpdate
+    | New
+    | Assimilated
 
 
 type alias DrawnRect =
@@ -162,6 +167,7 @@ init { devicePixelRatio, screenDimensions, webSocketUrl } =
     , azimuth = Angle.degrees 90
     , elevation = Angle.degrees 0
     , drawnRect = Nothing
+    , requireSpanAssimilation = False
     , screenDimensions = screenDimensions
     , devicePixelRatio = devicePixelRatio
     , webSocketUrl = webSocketUrl
@@ -190,12 +196,11 @@ subscriptions model =
     Sub.batch
         [ Browser.Events.onKeyDown <| arrowKeyDecoder ArrowKeyPressed
         , Browser.Events.onResize WindowResize
-        , case model.transition of
-            Nothing ->
-                Sub.none
+        , if model.transition /= Nothing || model.requireSpanAssimilation then
+            Browser.Events.onAnimationFrameDelta AnimationTick
 
-            Just _ ->
-                Browser.Events.onAnimationFrameDelta AnimationTick
+          else
+            Sub.none
         , Funnels.subscriptions FunnelMsg model
         ]
 
@@ -304,27 +309,7 @@ update msg model =
                     withLayerSet |> transitionFocusTo newFocus
 
         AnimationTick delta ->
-            withNoCmd <|
-                case model.transition of
-                    Nothing ->
-                        model
-
-                    Just ({ from, to } as transition) ->
-                        let
-                            at =
-                                transition.at + (delta / Duration.inMilliseconds transitionDuration)
-                        in
-                        if at >= 1 then
-                            { model
-                                | focus = to
-                                , transition = Nothing
-                            }
-
-                        else
-                            { model
-                                | focus = Point3d.interpolateFrom from to <| Ease.inOutCubic at
-                                , transition = Just { transition | at = at }
-                            }
+            model |> assimilateSpans |> tickTransition delta |> withNoCmd
 
         WindowResize width height ->
             { model | screenDimensions = ( width, height ) }
@@ -386,13 +371,14 @@ updateFromWebsocket response funnelState model_ =
 
                 Ok (ApiEstablish newWorld) ->
                     { model
-                        | world = buildWorld newWorld model.world <| apiLayerToSpansWithSource Original
+                        | world = buildWorld newWorld model.world <| apiLayerToSpansWithAge Original
                     }
                         |> withNoCmd
 
                 Ok (ApiUpdate { world }) ->
                     { model
                         | world = buildWorld world model.world <| diffApiLayersWith model.world
+                        , requireSpanAssimilation = True
                     }
                         |> withNoCmd
 
@@ -410,6 +396,57 @@ updateFromWebsocket response funnelState model_ =
 
         _ ->
             noOp
+
+
+assimilateSpans : Model -> Model
+assimilateSpans ({ requireSpanAssimilation, world } as model) =
+    if not requireSpanAssimilation then
+        model
+
+    else
+        let
+            { layers } =
+                world
+        in
+        { model
+            | world =
+                mapAllSpans
+                    (\span ->
+                        { span
+                            | age =
+                                if span.age == New then
+                                    Assimilated
+
+                                else
+                                    span.age
+                        }
+                    )
+                    world
+        }
+
+
+tickTransition : Float -> Model -> Model
+tickTransition delta model =
+    case model.transition of
+        Nothing ->
+            model
+
+        Just ({ from, to } as transition) ->
+            let
+                at =
+                    transition.at + (delta / Duration.inMilliseconds transitionDuration)
+            in
+            if at >= 1 then
+                { model
+                    | focus = to
+                    , transition = Nothing
+                }
+
+            else
+                { model
+                    | focus = Point3d.interpolateFrom from to <| Ease.inOutCubic at
+                    , transition = Just { transition | at = at }
+                }
 
 
 transitionFocusTo : WorldPoint -> Model -> Model
@@ -547,7 +584,7 @@ viewLayer camera drawnRect index { plane, spans, hue } =
 
 
 viewSpan : CameraGeometry -> SvgBehaviour -> Span -> Maybe ( String, SvgStyled.Svg Msg )
-viewSpan cameraGeometry behaviour { rect, source, key } =
+viewSpan cameraGeometry behaviour { rect, age, key } =
     let
         viewPlane =
             cameraGeometry.camera
@@ -581,34 +618,29 @@ viewSpan cameraGeometry behaviour { rect, source, key } =
                     Inert ->
                         []
 
-            displayStyle =
-                if Rectangle3d.vertices rect |> List.all (inFrontOf viewPlane) then
-                    Css.display Css.unset
-
-                else
-                    Css.display Css.none
+            brightnessTransition =
+                Css.Transitions.transition [ Css.Transitions.filter3 500 0 Css.Transitions.easeOut ]
 
             styles =
-                case source of
+                case age of
                     Original ->
                         []
 
-                    FromApiUpdate ->
-                        [ Css.animationName <|
-                            Css.Animations.keyframes
-                                [ ( 0, [ Css.Animations.property "filter" "brightness(300%)" ] )
-                                , ( 10, [ Css.Animations.property "filter" "brightness(300%)" ] )
-                                , ( 100, [ Css.Animations.property "filter" "brightness(100%)" ] )
-                                ]
-                        , Css.animationDuration <| Css.ms 500
-                        , Css.property "animation-timing-function" "ease-out"
+                    New ->
+                        [ Css.property "filter" "brightness(300%)"
+                        , brightnessTransition
+                        ]
+
+                    Assimilated ->
+                        [ Css.property "filter" "brightness(100%)"
+                        , brightnessTransition
                         ]
         in
         Just
             ( key
             , SvgStyled.path
                 (SvgAttr.d (SvgPath.toString path)
-                    :: SvgAttr.css (displayStyle :: styles)
+                    :: SvgAttr.css styles
                     :: attributes
                 )
                 []
@@ -664,10 +696,10 @@ nowrapTexts =
         >> List.intersperse (Styled.text " ")
 
 
-keyedSpan : Source -> Rect -> Span
+keyedSpan : Age -> Rect -> Span
 keyedSpan source rect =
     { rect = rect
-    , source = source
+    , age = source
     , key =
         Rectangle3d.vertices rect
             |> List.head
@@ -781,6 +813,13 @@ getCurrentLayer { layers } =
 mapCurrentLayer : (Layer -> Layer) -> World -> World
 mapCurrentLayer f ({ layers } as world) =
     { world | layers = ZipList.replace (f <| ZipList.current layers) layers }
+
+
+mapAllSpans : (Span -> Span) -> World -> World
+mapAllSpans f ({ layers } as world) =
+    { world
+        | layers = ZipList.map (\layer -> { layer | spans = List.map f layer.spans }) layers
+    }
 
 
 goToIndex : Int -> World -> World
@@ -955,8 +994,8 @@ apiWorldToLayers { origin, layers } buildSpans =
         layers
 
 
-apiLayerToSpansWithSource : Source -> BuildSpans
-apiLayerToSpansWithSource source absoluteIndex =
+apiLayerToSpansWithAge : Age -> BuildSpans
+apiLayerToSpansWithAge source absoluteIndex =
     let
         plane =
             sourcePlaneFromIndex absoluteIndex
@@ -982,10 +1021,10 @@ diffApiLayersWith oldWorld absoluteIndex inputApiLayer =
                         nextSpan :: diff restApiLayer restSpans
 
                     else
-                        keyedSpan FromApiUpdate nextRectFromApi :: diff restApiLayer spans
+                        keyedSpan New nextRectFromApi :: diff restApiLayer spans
 
                 _ ->
-                    apiLayerToSpansWithSource FromApiUpdate absoluteIndex apiLayer
+                    apiLayerToSpansWithAge New absoluteIndex apiLayer
     in
     diff inputApiLayer <| getSpansByAbsoluteLayerIndex absoluteIndex oldWorld
 
