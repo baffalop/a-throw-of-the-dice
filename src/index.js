@@ -7,7 +7,7 @@ const app = Elm.Main.init({
   flags: {
     devicePixelRatio: window.devicePixelRatio,
     screenDimensions: [window.innerWidth, window.innerHeight],
-    webSocketUrl: `ws://${window.location.host}`,
+    webSocketUrl: `ws://${window.location.hostname}:8080`,
   },
 })
 
