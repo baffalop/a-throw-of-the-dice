@@ -422,6 +422,7 @@ assimilateSpans ({ requireSpanAssimilation, world } as model) =
                         }
                     )
                     world
+            , requireSpanAssimilation = False
         }
 
 
