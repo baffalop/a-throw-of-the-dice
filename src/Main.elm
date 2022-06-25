@@ -1011,7 +1011,7 @@ diffApiLayersWith : World -> BuildSpans
 diffApiLayersWith oldWorld absoluteIndex inputApiLayer =
     let
         plane =
-            sourcePlaneFromIndex <| Debug.log "absolute layer index" absoluteIndex
+            sourcePlaneFromIndex absoluteIndex
 
         diff : ApiLayer -> List Span -> List Span
         diff apiLayer spans =
