@@ -381,9 +381,9 @@ updateFromWebsocket response funnelState model_ =
                     }
                         |> withNoCmd
 
-                Ok (ApiUpdate { world }) ->
+                Ok (ApiUpdate newWorld) ->
                     { model
-                        | world = buildWorld world model.world <| diffApiLayersWith model.world
+                        | world = buildWorld newWorld model.world <| diffApiLayersWith model.world
                         , requireSpanAssimilation = True
                     }
                         |> withNoCmd
@@ -971,14 +971,8 @@ type UpMsg
 
 type DownMsg
     = ApiEstablish ApiWorld
-    | ApiUpdate ApiUpdateParams
+    | ApiUpdate ApiWorld
     | ApiError String
-
-
-type alias ApiUpdateParams =
-    { world : ApiWorld
-    , insertedAt : Int
-    }
 
 
 type alias BuildSpans =
@@ -1120,10 +1114,7 @@ downDecoder =
                         Decode.map ApiEstablish <| Decode.field "world" worldDecoder
 
                     "update" ->
-                        Decode.map ApiUpdate <|
-                            Decode.map2 ApiUpdateParams
-                                (Decode.field "world" worldDecoder)
-                                (Decode.field "insertedAt" Decode.int)
+                        Decode.map ApiUpdate <| Decode.field "world" worldDecoder
 
                     "error" ->
                         Decode.map ApiError <| Decode.field "errorMsg" Decode.string
