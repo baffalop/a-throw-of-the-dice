@@ -283,7 +283,7 @@ update msg model =
                                 )
                                 model.world
                     }
-                        |> withCmd (sendApiMsg <| ApiInsert { span = rectToApi rect, layer = relativeIndex model.world })
+                        |> withCmd (sendApiMsg <| ApiInsert { span = rectToApi rect, layer = currentIndexAbsolute model.world })
 
         Wheel deltaX deltaY ->
             let
@@ -868,7 +868,7 @@ grow direction world =
                     }
 
         newRelativeIndex =
-            relativeIndex world + offset
+            currentIndexAbsolute world + offset
 
         newLayer =
             { plane = sourcePlaneFromIndex newRelativeIndex
@@ -882,19 +882,22 @@ grow direction world =
 
 
 buildWorld : ApiWorld -> World -> BuildSpans -> World
-buildWorld apiWorld oldWorld buildSpans =
+buildWorld apiWorld world buildSpans =
     { origin = apiWorld.origin
     , layers =
         apiWorldToLayers apiWorld buildSpans
             |> ZipList.fromList
-            |> Maybe.andThen (ZipList.goToIndex <| apiWorld.origin + relativeIndex oldWorld)
-            |> Maybe.withDefault oldWorld.layers
+            |> Maybe.andThen
+                (ZipList.goToIndex <|
+                    toRelativeIndex { origin = apiWorld.origin, layerIndex = currentIndexAbsolute world }
+                )
+            |> Maybe.withDefault world.layers
     }
 
 
-relativeIndex : World -> Int
-relativeIndex { layers, origin } =
-    toRelativeIndex { layerIndex = ZipList.currentIndex layers, origin = origin }
+currentIndexAbsolute : World -> Int
+currentIndexAbsolute { layers, origin } =
+    toAbsoluteIndex { layerIndex = ZipList.currentIndex layers, origin = origin }
 
 
 sourcePlaneFromIndex : Int -> SourcePlane
