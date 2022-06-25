@@ -283,7 +283,13 @@ update msg model =
                                 )
                                 model.world
                     }
-                        |> withCmd (sendApiMsg <| ApiInsert { span = rectToApi rect, layer = currentIndexAbsolute model.world })
+                        |> withCmd
+                            (sendApiMsg <|
+                                ApiInsert
+                                    { span = rectToApi rect
+                                    , layer = currentIndexAbsolute model.world
+                                    }
+                            )
 
         Wheel deltaX deltaY ->
             let
