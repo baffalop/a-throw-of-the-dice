@@ -32,8 +32,6 @@ import Pixels
 import Point2d exposing (Point2d)
 import Point3d exposing (Point3d)
 import Point3d.Projection
-import PortFunnel.WebSocket as WS
-import PortFunnels as Funnels
 import Quantity
 import Rectangle2d exposing (Rectangle2d)
 import Rectangle3d exposing (Rectangle3d)
@@ -45,6 +43,7 @@ import Svg.Styled.Keyed
 import Vector2d exposing (Vector2d)
 import Vector3d exposing (Vector3d)
 import Viewpoint3d exposing (Viewpoint3d)
+import WebSocket
 import ZipList exposing (ZipList)
 
 
@@ -70,7 +69,6 @@ type alias Model =
         , azimuth : Angle
         , elevation : Angle
         , drawnRect : Maybe DrawnRect
-        , funnelState : Funnels.State
 
         -- true when we're waiting for the next animation frame to transition New rects to Assimilated (see Age)
         , requireSpanAssimilation : Bool
@@ -81,7 +79,6 @@ type alias Flags a =
     { a
         | devicePixelRatio : Float
         , screenDimensions : ( Int, Int )
-        , webSocketUrl : String
     }
 
 
@@ -140,7 +137,7 @@ type Msg
     | AnimationTick Float
     | WindowResize Int Int
     | ArrowKeyPressed Direction
-    | FunnelMsg Encode.Value
+    | WebSocketEvent (WebSocket.Event DownMsg)
     | NoOp
 
 
@@ -150,7 +147,7 @@ type Direction
 
 
 init : Flags {} -> ( Model, Cmd Msg )
-init { devicePixelRatio, screenDimensions, webSocketUrl } =
+init { devicePixelRatio, screenDimensions } =
     let
         ( screenWidth, screenHeight ) =
             screenDimensions
@@ -170,10 +167,8 @@ init { devicePixelRatio, screenDimensions, webSocketUrl } =
     , requireSpanAssimilation = False
     , screenDimensions = screenDimensions
     , devicePixelRatio = devicePixelRatio
-    , webSocketUrl = webSocketUrl
-    , funnelState = Funnels.initialState
     }
-        |> withCmd (wsCmd <| WS.makeOpenWithKey wsKey webSocketUrl)
+        |> withNoCmd
 
 
 emptyWorld : World
@@ -201,7 +196,7 @@ subscriptions model =
 
           else
             Sub.none
-        , Funnels.subscriptions FunnelMsg model
+        , WebSocket.sub WebSocketEvent downDecoder
         ]
 
 
@@ -345,63 +340,43 @@ update msg model =
                 |> transitionFocusTo newFocus
                 |> withNoCmd
 
-        FunnelMsg value ->
-            case Funnels.processValue funnelDict value model.funnelState model of
-                Err _ ->
-                    noOp
-
-                Ok result ->
-                    result
+        WebSocketEvent event ->
+            updateFromWebsocket event model
 
 
-updateFromWebsocket : WS.Response -> Funnels.State -> Model -> ( Model, Cmd Msg )
-updateFromWebsocket response funnelState model_ =
+updateFromWebsocket : WebSocket.Event DownMsg -> Model -> ( Model, Cmd Msg )
+updateFromWebsocket event model =
     let
-        model =
-            { model_ | funnelState = funnelState }
-
-        noOp =
-            ( model, Cmd.none )
-
         justLog message =
             ( model, log message )
     in
-    case response of
-        WS.MessageReceivedResponse { message } ->
-            case Decode.decodeString downDecoder message of
-                Err _ ->
-                    justLog "Decode error"
+    case event of
+        WebSocket.Open ->
+            justLog "opened websocket"
 
-                Ok (ApiError err) ->
+        WebSocket.Msg msg ->
+            case msg of
+                ApiError err ->
                     justLog <| "API error: " ++ err
 
-                Ok (ApiEstablish newWorld) ->
+                ApiEstablish newWorld ->
                     { model
                         | world = buildWorld newWorld model.world <| apiLayerToSpansWithAge Original
                     }
                         |> withNoCmd
 
-                Ok (ApiUpdate newWorld) ->
+                ApiUpdate newWorld ->
                     { model
                         | world = buildWorld newWorld model.world <| diffApiLayersWith model.world
                         , requireSpanAssimilation = True
                     }
                         |> withNoCmd
 
-        WS.CmdResponse msg ->
-            model |> withCmd (wsCmd msg)
-
-        WS.ListResponse _ ->
-            noOp
-
-        WS.ErrorResponse _ ->
+        WebSocket.Error _ ->
             justLog "WS error"
 
-        WS.ConnectedResponse _ ->
-            justLog "WS connected"
-
-        _ ->
-            noOp
+        WebSocket.Close _ ->
+            justLog "WS closed"
 
 
 assimilateSpans : Model -> Model
@@ -1124,9 +1099,9 @@ downDecoder =
             )
 
 
-sendApiMsg : UpMsg -> Cmd Msg
+sendApiMsg : UpMsg -> Cmd msg
 sendApiMsg =
-    encodeUp >> Encode.encode 0 >> WS.makeSend wsKey >> wsCmd
+    encodeUp >> WebSocket.sendMsg
 
 
 
@@ -1464,32 +1439,3 @@ resolution ratio =
 
 subtractScreenMargins ( x, y ) =
     ( x - screenMargins, y - screenMargins )
-
-
-
--- PortFunnel boilerplate
-
-
-wsCmd : WS.Message -> Cmd Msg
-wsCmd =
-    WS.send <| getFunnelCmdPort WS.moduleName
-
-
-wsKey : String
-wsKey =
-    "api"
-
-
-getFunnelCmdPort moduleName =
-    Funnels.getCmdPort FunnelMsg moduleName False
-
-
-funnelHandlers : List (Funnels.Handler Model Msg)
-funnelHandlers =
-    [ Funnels.WebSocketHandler updateFromWebsocket
-    ]
-
-
-funnelDict : Funnels.FunnelDict Model Msg
-funnelDict =
-    Funnels.makeFunnelDict funnelHandlers <| flip (always getFunnelCmdPort)
